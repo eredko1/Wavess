@@ -10,6 +10,7 @@ import {
   Alert,
   Linking,
   Share,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -363,15 +364,17 @@ export default function SettingsScreen() {
               <View style={styles.exportRow}>
                 <Ionicons name="calendar-outline" size={17} color="#6366F1" />
                 <Text style={[styles.exportLabel, { color: '#EBEBF5', flex: 1 }]}>All children</Text>
-                <TouchableOpacity
-                  style={[styles.calBtn, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
-                  onPress={() => Linking.openURL(`webcal://${LOCAL_API_BASE.replace(/^https?:\/\//, '')}/api/calendar/${familyId}?token=${calToken}`)}
-                >
-                  <Text style={styles.calBtnText}>🍎 Apple</Text>
-                </TouchableOpacity>
+                {Platform.OS === 'ios' && (
+                  <TouchableOpacity
+                    style={[styles.calBtn, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
+                    onPress={() => Linking.openURL(`webcal://${LOCAL_API_BASE.replace(/^https?:\/\//, '')}/api/calendar/${familyId}?token=${calToken}`).catch(() => {})}
+                  >
+                    <Text style={styles.calBtnText}>🍎 Apple</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={[styles.calBtn, { backgroundColor: 'rgba(66,133,244,0.2)' }]}
-                  onPress={() => Linking.openURL(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(`${LOCAL_API_BASE}/api/calendar/${familyId}?token=${calToken}`)}`)}
+                  onPress={() => Linking.openURL(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(`${LOCAL_API_BASE}/api/calendar/${familyId}?token=${calToken}`)}`).catch(() => Alert.alert('Could not open', 'Make sure Google Calendar is installed.'))}
                 >
                   <Text style={[styles.calBtnText, { color: '#4285F4' }]}>Google</Text>
                 </TouchableOpacity>
@@ -382,15 +385,17 @@ export default function SettingsScreen() {
                   <View style={styles.exportRow}>
                     <Ionicons name="calendar-outline" size={17} color="#636366" />
                     <Text style={[styles.exportLabel, { color: '#EBEBF5', flex: 1 }]}>{c.name.split(' ')[0]} only</Text>
-                    <TouchableOpacity
-                      style={[styles.calBtn, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
-                      onPress={() => Linking.openURL(`webcal://${LOCAL_API_BASE.replace(/^https?:\/\//, '')}/api/calendar/${familyId}?token=${calToken}&child=${c.id}`)}
-                    >
-                      <Text style={styles.calBtnText}>🍎 Apple</Text>
-                    </TouchableOpacity>
+                    {Platform.OS === 'ios' && (
+                      <TouchableOpacity
+                        style={[styles.calBtn, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
+                        onPress={() => Linking.openURL(`webcal://${LOCAL_API_BASE.replace(/^https?:\/\//, '')}/api/calendar/${familyId}?token=${calToken}&child=${c.id}`).catch(() => {})}
+                      >
+                        <Text style={styles.calBtnText}>🍎 Apple</Text>
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity
                       style={[styles.calBtn, { backgroundColor: 'rgba(66,133,244,0.2)' }]}
-                      onPress={() => Linking.openURL(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(`${LOCAL_API_BASE}/api/calendar/${familyId}?token=${calToken}&child=${c.id}`)}`)}
+                      onPress={() => Linking.openURL(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(`${LOCAL_API_BASE}/api/calendar/${familyId}?token=${calToken}&child=${c.id}`)}`).catch(() => Alert.alert('Could not open', 'Make sure Google Calendar is installed.'))}
                     >
                       <Text style={[styles.calBtnText, { color: '#4285F4' }]}>Google</Text>
                     </TouchableOpacity>
