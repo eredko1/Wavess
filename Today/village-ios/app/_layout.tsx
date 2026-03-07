@@ -2,6 +2,7 @@ import 'react-native-url-polyfill/auto';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -54,36 +55,75 @@ async function registerPushToken(session: Session) {
   }).catch(() => {}); // best-effort
 }
 
+type FamilyStatus = 'loading' | 'setup_needed' | 'ready';
+
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [familyStatus, setFamilyStatus] = useState<FamilyStatus>('loading');
   const router = useRouter();
   const segments = useSegments();
+
+  async function checkFamily(userId: string) {
+    const { data } = await supabase
+      .from('users')
+      .select('family_id')
+      .eq('id', userId)
+      .maybeSingle();
+    setFamilyStatus(data?.family_id ? 'ready' : 'setup_needed');
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-      if (data.session) registerPushToken(data.session);
+      if (data.session) {
+        registerPushToken(data.session);
+        checkFamily(data.session.user.id);
+      } else {
+        setFamilyStatus('ready'); // no session — routing handled below
+      }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) registerPushToken(session);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+      if (sess) {
+        registerPushToken(sess);
+        checkFamily(sess.user.id);
+      } else {
+        setFamilyStatus('ready');
+      }
     });
 
-    return () => subscription.unsubscribe();
+    // Android: Chrome Custom Tabs fires an Intent for village:// rather than
+    // returning to openAuthSessionAsync, so we catch it here as a fallback.
+    const linkSub = Linking.addEventListener('url', async ({ url }) => {
+      if (!url.startsWith('village://auth-callback')) return;
+      const code = new URL(url).searchParams.get('code');
+      if (code) await supabase.auth.exchangeCodeForSession(code);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      linkSub.remove();
+    };
   }, []);
 
   useEffect(() => {
-    if (session === undefined) return; // still loading
+    if (session === undefined || familyStatus === 'loading') return;
 
     const inAuth = segments[0] === '(auth)';
+    const inSetup = segments[0] === '(setup)';
 
-    if (!session && !inAuth) {
-      router.replace('/(auth)');
-    } else if (session && inAuth) {
-      router.replace('/(tabs)');
+    if (!session) {
+      if (!inAuth) router.replace('/(auth)');
+      return;
     }
-  }, [session, segments]);
+
+    if (familyStatus === 'setup_needed') {
+      if (!inSetup) router.replace('/(setup)');
+    } else {
+      if (inAuth || inSetup) router.replace('/(tabs)');
+    }
+  }, [session, familyStatus, segments]);
 
   return <>{children}</>;
 }

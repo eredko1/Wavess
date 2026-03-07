@@ -67,6 +67,7 @@ export default function TimelineScreen() {
   const [filterChildren, setFilterChildren] = useState<{ id: string; name: string }[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [familyName, setFamilyName] = useState('');
+  const [members, setMembers] = useState<{ id: string; display_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [ingestOpen, setIngestOpen] = useState(false);
@@ -113,6 +114,14 @@ export default function TimelineScreen() {
     const { data: events } = await query.limit(60);
     const evts = (events ?? []) as EventWithChild[];
     setSections(groupIntoSections(evts));
+
+    // Fetch family members for header avatars
+    const { data: membersData } = await supabase
+      .from('users')
+      .select('id, display_name')
+      .eq('family_id', familyId)
+      .order('created_at', { ascending: true });
+    setMembers((membersData ?? []) as { id: string; display_name: string }[]);
 
     // Collect unique children from fetched events for filter chips
     const seen = new Set<string>();
@@ -262,9 +271,32 @@ export default function TimelineScreen() {
                 <Text style={styles.familyName}>{familyName}</Text>
                 <Text style={styles.pageTitle}>Timeline</Text>
               </View>
-              <TouchableOpacity style={styles.addBtn} onPress={() => setAddOpen(true)}>
-                <Ionicons name="add" size={22} color="#FFFFFF" />
-              </TouchableOpacity>
+              <View style={styles.titleRowRight}>
+                {members.length > 1 && (
+                  <View style={styles.memberAvatars}>
+                    {members.slice(0, 3).map((m, i) => (
+                      <View
+                        key={m.id}
+                        style={[styles.memberAvatar, { marginLeft: i === 0 ? 0 : -8, zIndex: members.length - i }]}
+                      >
+                        <Text style={styles.memberAvatarText}>
+                          {(m.display_name ?? '?')[0].toUpperCase()}
+                        </Text>
+                      </View>
+                    ))}
+                    {members.length > 3 && (
+                      <View style={[styles.memberAvatar, { marginLeft: -8, backgroundColor: '#2C2C2E' }]}>
+                        <Text style={[styles.memberAvatarText, { color: '#636366' }]}>
+                          +{members.length - 3}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+                <TouchableOpacity style={styles.addBtn} onPress={() => setAddOpen(true)}>
+                  <Ionicons name="add" size={22} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
             </View>
             {/* Past / Upcoming toggle */}
             <View style={styles.toggle}>
@@ -397,6 +429,31 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
+  titleRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 2,
+  },
+  memberAvatars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  memberAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#6366F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#000000',
+  },
+  memberAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   addBtn: {
     width: 36,
     height: 36,
@@ -404,7 +461,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#2C2C2E',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
   },
   toggle: {
     flexDirection: 'row',

@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
 import { supabase } from '@/lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -20,12 +19,10 @@ export default function SignInScreen() {
   async function handleGoogleSignIn() {
     setLoading(true);
     try {
-      const redirectTo = makeRedirectUri({ scheme: 'village' });
-
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo,
+          redirectTo: 'village://auth-callback',
           skipBrowserRedirect: true,
         },
       });
@@ -35,22 +32,18 @@ export default function SignInScreen() {
         return;
       }
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      const result = await WebBrowser.openAuthSessionAsync(data.url, 'village://auth-callback');
 
       if (result.type === 'success') {
         const url = new URL(result.url);
         const code = url.searchParams.get('code');
         if (code) {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) {
-            Alert.alert('Sign-in failed', exchangeError.message);
-          }
-          // On success, onAuthStateChange in _layout.tsx redirects to tabs
+          if (exchangeError) Alert.alert('Sign-in failed', exchangeError.message);
         }
       }
-    } catch (err) {
+    } catch {
       Alert.alert('Error', 'Something went wrong. Please try again.');
-      console.error('Google sign-in error:', err);
     } finally {
       setLoading(false);
     }

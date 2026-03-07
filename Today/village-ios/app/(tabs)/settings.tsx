@@ -28,6 +28,12 @@ interface FamilyData {
   zip_code: string | null;
 }
 
+interface FamilyMember {
+  id: string;
+  display_name: string;
+  role: string;
+}
+
 function ageLabel(months: number | null): string {
   if (!months) return '—';
   if (months < 24) return `${months}mo`;
@@ -53,6 +59,9 @@ export default function SettingsScreen() {
   const [children, setChildren] = useState<Pick<Child, 'id' | 'name' | 'age_in_months'>[]>([]);
   const [totalEvents, setTotalEvents] = useState(0);
   const [userPhone, setUserPhone] = useState('');
+  const [userId, setUserId] = useState('');
+  const [userRole, setUserRole] = useState('');
+  const [members, setMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Family name editing
@@ -73,17 +82,19 @@ export default function SettingsScreen() {
     if (!session) return;
 
     setUserPhone(session.user.phone ?? session.user.email ?? session.user.id);
+    setUserId(session.user.id);
 
     const { data: user } = await supabase
       .from('users')
-      .select('family_id')
+      .select('family_id, role')
       .eq('id', session.user.id)
       .maybeSingle();
 
     if (!user) return;
     setFamilyId(user.family_id);
+    setUserRole(user.role ?? '');
 
-    const [familyRes, childrenRes, eventsRes] = await Promise.all([
+    const [familyRes, childrenRes, eventsRes, membersRes] = await Promise.all([
       supabase
         .from('families')
         .select('id, name, plan_tier, ingestion_count, zip_code')
@@ -100,6 +111,11 @@ export default function SettingsScreen() {
         .eq('family_id', user.family_id)
         .eq('status', 'confirmed')
         .gte('start_at', new Date().toISOString()),
+      supabase
+        .from('users')
+        .select('id, display_name, role')
+        .eq('family_id', user.family_id)
+        .order('created_at', { ascending: true }),
     ]);
 
     const fam = familyRes.data as FamilyData | null;
@@ -107,6 +123,7 @@ export default function SettingsScreen() {
     setNameValue(fam?.name ?? '');
     setChildren((childrenRes.data ?? []) as typeof children);
     setTotalEvents(eventsRes.count ?? 0);
+    setMembers((membersRes.data ?? []) as FamilyMember[]);
 
     // Fetch calendar token for live subscription URLs
     const tokenRes = await fetch(`${LOCAL_API_BASE}/api/calendar/token`, {
@@ -159,16 +176,47 @@ export default function SettingsScreen() {
         Alert.alert('Error', json.error ?? 'Failed to generate invite');
       } else {
         setInviteEmail('');
-        await Share.share({
-          message: `Join my family on Village!\n\n${json.invite_link}`,
-          url: json.invite_link,
-        });
+        const shareMsg = json.switching_family
+          ? `Join my family on Village! Note: clicking this link will move you out of your current family.\n\n${json.invite_link}`
+          : `Join my family on Village!\n\n${json.invite_link}`;
+        await Share.share({ message: shareMsg, url: json.invite_link });
       }
     } catch {
       Alert.alert('Error', 'Network error — check your connection.');
     } finally {
       setInviting(false);
     }
+  }
+
+  async function handleRemoveMember(memberId: string, memberName: string) {
+    Alert.alert(
+      'Remove Member',
+      `Remove ${memberName} from the family? They will lose access to all shared data.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              const res = await fetch(`${LOCAL_API_BASE}/api/family/members/${memberId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+              });
+              const json = await res.json();
+              if (!res.ok) {
+                Alert.alert('Error', json.error ?? 'Failed to remove member.');
+              } else {
+                setMembers(prev => prev.filter(m => m.id !== memberId));
+              }
+            } catch {
+              Alert.alert('Error', 'Network error — check your connection.');
+            }
+          },
+        },
+      ]
+    );
   }
 
   async function exportCalendar(childId?: string) {
@@ -314,6 +362,42 @@ export default function SettingsScreen() {
                     <Text style={styles.fieldValueRight}>{ageLabel(c.age_in_months)}</Text>
                   </View>
                   {i < children.length - 1 && <View style={styles.divider} />}
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Family Members */}
+        {members.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>FAMILY MEMBERS</Text>
+            <View style={styles.card}>
+              {members.map((m, i) => (
+                <View key={m.id}>
+                  <View style={styles.cardRow}>
+                    <View style={styles.childAvatar}>
+                      <Text style={styles.childAvatarText}>
+                        {(m.display_name ?? '?')[0].toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fieldValue}>{m.display_name}</Text>
+                      <Text style={[styles.fieldLabel, { marginBottom: 0 }]}>
+                        {m.role.replace('_', ' ')}
+                        {m.id === userId ? ' · you' : ''}
+                      </Text>
+                    </View>
+                    {userRole === 'owner' && m.id !== userId && m.role !== 'owner' && (
+                      <TouchableOpacity
+                        onPress={() => handleRemoveMember(m.id, m.display_name)}
+                        style={[styles.iconBtn, { backgroundColor: 'rgba(255,59,48,0.1)' }]}
+                      >
+                        <Ionicons name="person-remove-outline" size={14} color="#FF453A" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  {i < members.length - 1 && <View style={styles.divider} />}
                 </View>
               ))}
             </View>
