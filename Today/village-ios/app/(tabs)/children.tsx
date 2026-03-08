@@ -8,13 +8,91 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { LOCAL_API_BASE } from '@/lib/config';
 import ChildCard from '@/components/ChildCard';
 import ChildModal from '@/components/ChildModal';
 import type { ChildWithNextEvent } from '@/types/database';
+
+const CATEGORIES = [
+  { key: 'school',       label: 'School',      emoji: '📚' },
+  { key: 'sports',       label: 'Sports',       emoji: '⚽' },
+  { key: 'dance',        label: 'Dance',        emoji: '💃' },
+  { key: 'arts',         label: 'Arts & Crafts',emoji: '🎨' },
+  { key: 'library',      label: 'Library',      emoji: '📖' },
+  { key: 'music',        label: 'Music',        emoji: '🎵' },
+  { key: 'stem',         label: 'STEM',         emoji: '🔬' },
+  { key: 'nature',       label: 'Outdoors',     emoji: '🌿' },
+  { key: 'martial_arts', label: 'Martial Arts', emoji: '🥋' },
+  { key: 'swimming',     label: 'Swimming',     emoji: '🏊' },
+  { key: 'theater',      label: 'Theater',      emoji: '🎭' },
+  { key: 'community',    label: 'Community',    emoji: '🏘️' },
+  { key: 'fitness',      label: 'Fitness',      emoji: '🏃' },
+];
+
+function InterestsPicker({
+  selected,
+  onToggle,
+  onSave,
+  saving,
+  saved,
+}: {
+  selected: Set<string>;
+  onToggle: (key: string) => void;
+  onSave: () => void;
+  saving: boolean;
+  saved: boolean;
+}) {
+  return (
+    <View style={iStyles.root}>
+      <View style={iStyles.header}>
+        <View>
+          <Text style={iStyles.title}>Family Interests</Text>
+          <Text style={iStyles.subtitle}>
+            What are your kids into? We&apos;ll show matching events in Loop.
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[iStyles.saveBtn, saving && iStyles.saveBtnDisabled]}
+          onPress={onSave}
+          disabled={saving}
+          activeOpacity={0.85}
+        >
+          <Text style={iStyles.saveBtnText}>
+            {saving ? '…' : saved ? '✓ Saved' : 'Save'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={iStyles.chips}
+      >
+        {CATEGORIES.map((cat) => {
+          const on = selected.has(cat.key);
+          return (
+            <TouchableOpacity
+              key={cat.key}
+              style={[iStyles.chip, on && iStyles.chipOn]}
+              onPress={() => onToggle(cat.key)}
+              activeOpacity={0.8}
+            >
+              <Text style={iStyles.chipEmoji}>{cat.emoji}</Text>
+              <Text style={[iStyles.chipLabel, on && iStyles.chipLabelOn]}>
+                {cat.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
 
 export default function ChildrenScreen() {
   const insets = useSafeAreaInsets();
@@ -24,6 +102,11 @@ export default function ChildrenScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedChild, setSelectedChild] = useState<ChildWithNextEvent | null>(null);
+
+  // Interests state
+  const [interests, setInterests] = useState<Set<string>>(new Set());
+  const [interestsSaved, setInterestsSaved] = useState(false);
+  const [interestsSaving, setInterestsSaving] = useState(false);
 
   async function fetchData() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -38,15 +121,20 @@ export default function ChildrenScreen() {
     if (!user) return;
     setFamilyId(user.family_id);
 
-    const { data: kids } = await supabase
-      .from('children')
-      .select('*')
-      .eq('family_id', user.family_id)
-      .order('dob', { ascending: true });
+    const [kidsResult, familyResult] = await Promise.all([
+      supabase
+        .from('children')
+        .select('*')
+        .eq('family_id', user.family_id)
+        .order('dob', { ascending: true }),
+      supabase
+        .from('families')
+        .select('interests')
+        .eq('id', user.family_id)
+        .maybeSingle(),
+    ]);
 
-    if (!kids) return;
-
-    // Fetch all upcoming events in one query, then group by child
+    // Fetch upcoming events
     const now = new Date().toISOString();
     const { data: upcoming } = await supabase
       .from('events')
@@ -63,19 +151,19 @@ export default function ChildrenScreen() {
       }
     }
 
-    const enriched: ChildWithNextEvent[] = kids.map((child) => ({
+    const enriched: ChildWithNextEvent[] = (kidsResult.data ?? []).map((child) => ({
       ...child,
       next_event: nextEventMap.get(child.id) ?? null,
     }));
 
     setChildren(enriched);
+    setInterests(new Set(familyResult.data?.interests ?? []));
   }
 
   useEffect(() => {
     fetchData().finally(() => setLoading(false));
   }, []);
 
-  // Realtime: re-fetch when children change
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let channel: any = null;
@@ -114,6 +202,37 @@ export default function ChildrenScreen() {
     await fetchData();
     setRefreshing(false);
   }, []);
+
+  function toggleInterest(key: string) {
+    setInterests((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+    setInterestsSaved(false);
+  }
+
+  async function saveInterests() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    setInterestsSaving(true);
+    try {
+      const res = await fetch(`${LOCAL_API_BASE}/api/family/interests`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ interests: Array.from(interests) }),
+      });
+      if (res.ok) setInterestsSaved(true);
+      else Alert.alert('Error', 'Could not save interests.');
+    } catch {
+      Alert.alert('Error', 'Network error.');
+    } finally {
+      setInterestsSaving(false);
+    }
+  }
 
   function openAdd() {
     setSelectedChild(null);
@@ -177,6 +296,15 @@ export default function ChildrenScreen() {
             <Text style={styles.emptyText}>No children yet</Text>
             <Text style={styles.emptyHint}>Tap + to add your first child.</Text>
           </View>
+        }
+        ListFooterComponent={
+          <InterestsPicker
+            selected={interests}
+            onToggle={toggleInterest}
+            onSave={saveInterests}
+            saving={interestsSaving}
+            saved={interestsSaved}
+          />
         }
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -253,5 +381,80 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontSize: 14,
     textAlign: 'center',
+  },
+});
+
+const iStyles = StyleSheet.create({
+  root: {
+    marginHorizontal: 16,
+    marginTop: 24,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    gap: 12,
+  },
+  title: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  subtitle: {
+    color: '#8E8E93',
+    fontSize: 12,
+    lineHeight: 16,
+    flex: 1,
+  },
+  saveBtn: {
+    backgroundColor: '#6366F1',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  saveBtnDisabled: {
+    opacity: 0.5,
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  chips: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#2C2C2E',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  chipOn: {
+    backgroundColor: '#6366F1',
+    borderColor: '#6366F1',
+  },
+  chipEmoji: {
+    fontSize: 14,
+  },
+  chipLabel: {
+    color: '#8E8E93',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  chipLabelOn: {
+    color: '#FFFFFF',
   },
 });
