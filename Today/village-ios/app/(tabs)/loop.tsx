@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { LOCAL_API_BASE } from '@/lib/config';
 import LoopCard from '@/components/LoopCard';
+import SubmitEventSheet from '@/components/SubmitEventSheet';
 import type { ThemeWithActivities, LocalEvent, Child } from '@/types/database';
 
 interface AISuggestion {
@@ -45,6 +46,7 @@ export default function LoopScreen() {
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
   const [aiLoading, setAiLoading] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [submitSheetVisible, setSubmitSheetVisible] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -261,7 +263,32 @@ export default function LoopScreen() {
             <Text style={styles.emptyHint}>Add your children's ages to get personalized activity ideas.</Text>
           </View>
         )}
+
+        {/* Business promo banner */}
+        <View style={styles.businessSection}>
+          <TouchableOpacity
+            style={styles.businessCard}
+            onPress={() => setSubmitSheetVisible(true)}
+            activeOpacity={0.85}
+          >
+            <View style={styles.businessIcon}>
+              <Text style={{ fontSize: 22 }}>🏪</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.businessTitle}>List Your Event</Text>
+              <Text style={styles.businessSub}>
+                Local business or org? Reach families near you — free to post.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#636366" />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
+
+      <SubmitEventSheet
+        visible={submitSheetVisible}
+        onClose={() => setSubmitSheetVisible(false)}
+      />
     </View>
   );
 }
@@ -441,5 +468,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  businessSection: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  businessCard: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  businessIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(99,102,241,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  businessTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  businessSub: {
+    color: '#8E8E93',
+    fontSize: 12,
+    lineHeight: 16,
   },
 });

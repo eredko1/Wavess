@@ -28,7 +28,7 @@ export default function SignInScreen() {
       });
 
       if (error || !data.url) {
-        Alert.alert('Sign-in failed', error?.message ?? 'Could not start sign-in.');
+        Alert.alert('Sign-in failed', error?.message ?? 'Could not start sign-in. Please try again.');
         return;
       }
 
@@ -38,8 +38,21 @@ export default function SignInScreen() {
         const url = new URL(result.url);
         const code = url.searchParams.get('code');
         if (code) {
+          // PKCE flow — exchange code for session
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) Alert.alert('Sign-in failed', exchangeError.message);
+        } else {
+          // Implicit flow fallback — tokens arrive in URL fragment
+          const hash = new URLSearchParams(url.hash.replace('#', ''));
+          const accessToken = hash.get('access_token');
+          const refreshToken = hash.get('refresh_token');
+          if (accessToken) {
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken ?? '',
+            });
+            if (sessionError) Alert.alert('Sign-in failed', sessionError.message);
+          }
         }
       }
     } catch {
