@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.village.app"
+      "bundleIdentifier": "com.eredko.village"
     },
     "android": {
-      "package": "com.village.app",
+      "package": "com.eredko.village",
       "userInterfaceStyle": "dark",
       "softwareKeyboardLayoutMode": "pan",
       "predictiveBackGestureEnabled": false,
