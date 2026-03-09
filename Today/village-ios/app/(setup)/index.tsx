@@ -40,6 +40,11 @@ export default function SetupScreen() {
   const [zipCode, setZipCode] = useState('');
   const [step1Loading, setStep1Loading] = useState(false);
 
+  // Join with code alternative
+  const [joinMode, setJoinMode] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
+
   // Step 2
   const [children, setChildren] = useState<ChildRow[]>([{ name: '', ageYears: '' }]);
   const [step2Loading, setStep2Loading] = useState(false);
@@ -148,6 +153,38 @@ export default function SetupScreen() {
     setChildren((prev) => prev.filter((_, i) => i !== index));
   }
 
+  async function handleJoinWithCode() {
+    const code = joinCode.trim().toUpperCase();
+    if (code.length !== 6) {
+      Alert.alert('Invalid code', 'Enter your 6-character family code.');
+      return;
+    }
+    setJoinLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${LOCAL_API_BASE}/api/family/join-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ code }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        Alert.alert('Error', json.error === 'Invalid code' ? 'Code not found. Check with whoever shared it.' : (json.error ?? 'Could not join family.'));
+        return;
+      }
+      setIsCoParent(true);
+      setFamilyNameValue(json.family_name ?? '');
+      setStep('done');
+    } catch {
+      Alert.alert('Error', 'Network error — check your connection.');
+    } finally {
+      setJoinLoading(false);
+    }
+  }
+
   function handleDone() {
     router.replace('/(tabs)');
   }
@@ -197,61 +234,106 @@ export default function SetupScreen() {
 
         {/* ── Step 1: Family info ── */}
         {step === 'name' && (
-          <View style={styles.card}>
-            <Text style={styles.fieldLabel}>YOUR NAME</Text>
-            <TextInput
-              ref={nameRef}
-              style={styles.input}
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder="e.g. Sarah"
-              placeholderTextColor="#636366"
-              autoCapitalize="words"
-              returnKeyType="next"
-              autoFocus
-            />
+          <>
+            {joinMode ? (
+              <View style={styles.card}>
+                <Text style={styles.fieldLabel}>FAMILY CODE</Text>
+                <TextInput
+                  style={[styles.input, { textAlign: 'center', fontSize: 24, letterSpacing: 8, fontWeight: '700' }]}
+                  value={joinCode}
+                  onChangeText={(v) => setJoinCode(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                  placeholder="ABC123"
+                  placeholderTextColor="#636366"
+                  autoCapitalize="characters"
+                  keyboardType="default"
+                  returnKeyType="done"
+                  onSubmitEditing={handleJoinWithCode}
+                  autoFocus
+                  maxLength={6}
+                />
+                <Text style={{ color: '#636366', fontSize: 12, marginTop: 4, marginBottom: 16 }}>
+                  Enter the 6-character code from your co-parent's settings screen.
+                </Text>
 
-            <Text style={[styles.fieldLabel, { marginTop: 16 }]}>FAMILY NAME</Text>
-            <TextInput
-              style={styles.input}
-              value={familyName}
-              onChangeText={setFamilyName}
-              placeholder="e.g. The Johnson Family"
-              placeholderTextColor="#636366"
-              autoCapitalize="words"
-              returnKeyType="next"
-            />
+                <TouchableOpacity
+                  style={[styles.primaryBtn, joinLoading && styles.btnDisabled]}
+                  onPress={handleJoinWithCode}
+                  disabled={joinLoading}
+                  activeOpacity={0.85}
+                >
+                  {joinLoading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Join family →</Text>
+                  )}
+                </TouchableOpacity>
 
-            <Text style={[styles.fieldLabel, { marginTop: 16 }]}>
-              ZIP CODE{' '}
-              <Text style={{ color: '#636366', fontWeight: '400', fontSize: 11 }}>
-                — optional
-              </Text>
-            </Text>
-            <TextInput
-              style={styles.input}
-              value={zipCode}
-              onChangeText={(v) => setZipCode(v.replace(/\D/g, '').slice(0, 5))}
-              placeholder="e.g. 10001"
-              placeholderTextColor="#636366"
-              keyboardType="number-pad"
-              returnKeyType="done"
-              maxLength={5}
-            />
+                <TouchableOpacity onPress={() => setJoinMode(false)} style={styles.skipBtn}>
+                  <Text style={styles.skipText}>← Create a new family instead</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.card}>
+                <Text style={styles.fieldLabel}>YOUR NAME</Text>
+                <TextInput
+                  ref={nameRef}
+                  style={styles.input}
+                  value={displayName}
+                  onChangeText={setDisplayName}
+                  placeholder="e.g. Sarah"
+                  placeholderTextColor="#636366"
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                  autoFocus
+                />
 
-            <TouchableOpacity
-              style={[styles.primaryBtn, step1Loading && styles.btnDisabled]}
-              onPress={handleCreateFamily}
-              disabled={step1Loading}
-              activeOpacity={0.85}
-            >
-              {step1Loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.primaryBtnText}>Continue →</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+                <Text style={[styles.fieldLabel, { marginTop: 16 }]}>FAMILY NAME</Text>
+                <TextInput
+                  style={styles.input}
+                  value={familyName}
+                  onChangeText={setFamilyName}
+                  placeholder="e.g. The Johnson Family"
+                  placeholderTextColor="#636366"
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                />
+
+                <Text style={[styles.fieldLabel, { marginTop: 16 }]}>
+                  ZIP CODE{' '}
+                  <Text style={{ color: '#636366', fontWeight: '400', fontSize: 11 }}>
+                    — optional
+                  </Text>
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={zipCode}
+                  onChangeText={(v) => setZipCode(v.replace(/\D/g, '').slice(0, 5))}
+                  placeholder="e.g. 10001"
+                  placeholderTextColor="#636366"
+                  keyboardType="number-pad"
+                  returnKeyType="done"
+                  maxLength={5}
+                />
+
+                <TouchableOpacity
+                  style={[styles.primaryBtn, step1Loading && styles.btnDisabled]}
+                  onPress={handleCreateFamily}
+                  disabled={step1Loading}
+                  activeOpacity={0.85}
+                >
+                  {step1Loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Continue →</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setJoinMode(true)} style={styles.skipBtn}>
+                  <Text style={styles.skipText}>Have a code? Join an existing family →</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
         )}
 
         {/* ── Step 2: Children ── */}
