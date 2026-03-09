@@ -11,7 +11,6 @@ import {
   Linking,
   Share,
   Platform,
-  Clipboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -189,10 +188,10 @@ export default function SettingsScreen() {
         Alert.alert('Error', json.error ?? 'Failed to generate invite');
       } else {
         setInviteEmail('');
-        const shareMsg = json.switching_family
-          ? `Join my family on Village! Note: clicking this link will move you out of your current family.\n\n${json.invite_link}`
-          : `Join my family on Village!\n\n${json.invite_link}`;
-        await Share.share({ message: shareMsg, url: json.invite_link });
+        await Share.share({
+          message: `Join my family on Village!\n\n${json.invite_link}`,
+          url: json.invite_link,
+        });
       }
     } catch {
       Alert.alert('Error', 'Network error — check your connection.');
@@ -448,31 +447,6 @@ export default function SettingsScreen() {
           </View>
         )}
 
-        {/* Family Join Code */}
-        {joinCode && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>FAMILY CODE</Text>
-            <View style={styles.card}>
-              <View style={[styles.cardRow, { justifyContent: 'center', paddingVertical: 16, gap: 16 }]}>
-                <Text style={{ color: '#FFFFFF', fontSize: 28, fontWeight: '700', letterSpacing: 8, fontVariant: ['tabular-nums'] }}>
-                  {joinCode}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => Share.share({ message: `Join my family on Village with code: ${joinCode}` })}
-                  style={[styles.iconBtn, { backgroundColor: 'rgba(99,102,241,0.2)', width: 'auto', paddingHorizontal: 12 }]}
-                >
-                  <Text style={{ color: '#818CF8', fontSize: 13, fontWeight: '600' }}>Share</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-                <Text style={{ color: '#636366', fontSize: 12, lineHeight: 16, textAlign: 'center' }}>
-                  Share this code with your co-parent. They enter it in the app to join instantly.
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
         {/* Invite co-parent */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>INVITE CO-PARENT</Text>
@@ -508,6 +482,29 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Family join code */}
+        {joinCode && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>FAMILY CODE</Text>
+            <View style={styles.card}>
+              <View style={styles.cardRow}>
+                <Text style={[styles.fieldValue, { fontFamily: 'monospace', fontSize: 22, letterSpacing: 4 }]}>{joinCode}</Text>
+                <TouchableOpacity
+                  style={[styles.iconBtn, { backgroundColor: 'rgba(99,102,241,0.2)', width: 'auto', paddingHorizontal: 12 }]}
+                  onPress={() => Share.share({ message: `Join my family on Village with code: ${joinCode}` })}
+                >
+                  <Text style={{ color: '#818CF8', fontSize: 13, fontWeight: '600' }}>Share</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+                <Text style={{ color: '#636366', fontSize: 12, lineHeight: 16 }}>
+                  Share this code with your co-parent so they can join your family.
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Calendar integrations */}
         {calToken && (
           <View style={styles.section}>
@@ -527,18 +524,7 @@ export default function SettingsScreen() {
                 )}
                 <TouchableOpacity
                   style={[styles.calBtn, { backgroundColor: 'rgba(66,133,244,0.2)' }]}
-                  onPress={() => {
-                    const url = `${LOCAL_API_BASE}/api/calendar/${familyId}?token=${calToken}`;
-                    Clipboard.setString(url);
-                    Alert.alert(
-                      'URL Copied',
-                      'The calendar URL has been copied. In Google Calendar, go to Settings → Add calendar → From URL, then paste it.',
-                      [
-                        { text: 'Open Google Calendar', onPress: () => Linking.openURL(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(url)}`).catch(() => {}) },
-                        { text: 'OK', style: 'cancel' },
-                      ]
-                    );
-                  }}
+                  onPress={() => Linking.openURL(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(`${LOCAL_API_BASE}/api/calendar/${familyId}?token=${calToken}`)}`).catch(() => Alert.alert('Could not open', 'Make sure Google Calendar is installed.'))}
                 >
                   <Text style={[styles.calBtnText, { color: '#4285F4' }]}>Google</Text>
                 </TouchableOpacity>
@@ -559,18 +545,7 @@ export default function SettingsScreen() {
                     )}
                     <TouchableOpacity
                       style={[styles.calBtn, { backgroundColor: 'rgba(66,133,244,0.2)' }]}
-                      onPress={() => {
-                        const url = `${LOCAL_API_BASE}/api/calendar/${familyId}?token=${calToken}&child=${c.id}`;
-                        Clipboard.setString(url);
-                        Alert.alert(
-                          'URL Copied',
-                          `${c.name.split(' ')[0]}'s calendar URL has been copied. In Google Calendar, go to Settings → Add calendar → From URL, then paste it.`,
-                          [
-                            { text: 'Open Google Calendar', onPress: () => Linking.openURL(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(url)}`).catch(() => {}) },
-                            { text: 'OK', style: 'cancel' },
-                          ]
-                        );
-                      }}
+                      onPress={() => Linking.openURL(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(`${LOCAL_API_BASE}/api/calendar/${familyId}?token=${calToken}&child=${c.id}`)}`).catch(() => Alert.alert('Could not open', 'Make sure Google Calendar is installed.'))}
                     >
                       <Text style={[styles.calBtnText, { color: '#4285F4' }]}>Google</Text>
                     </TouchableOpacity>
@@ -587,26 +562,6 @@ export default function SettingsScreen() {
             </View>
           </View>
         )}
-
-        {/* Google Calendar import */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>IMPORT FROM GOOGLE</Text>
-          <View style={styles.card}>
-            <TouchableOpacity
-              style={styles.exportRow}
-              onPress={() => Linking.openURL(`${LOCAL_API_BASE}/api/calendar/google/connect`).catch(() =>
-                Alert.alert('Error', 'Could not open browser.')
-              )}
-            >
-              <Ionicons name="logo-google" size={17} color="#4285F4" />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.exportLabel, { color: '#EBEBF5', fontSize: 15 }]}>Connect Google Calendar</Text>
-                <Text style={{ color: '#636366', fontSize: 12 }}>Import events from your Google Calendar</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color="#3A3A3C" />
-            </TouchableOpacity>
-          </View>
-        </View>
 
         {/* Account */}
         <View style={styles.section}>
