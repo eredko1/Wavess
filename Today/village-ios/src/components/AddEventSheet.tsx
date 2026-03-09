@@ -99,10 +99,11 @@ export default function AddEventSheet({ visible, onClose, onSaved }: Props) {
         .maybeSingle();
       if (!user) throw new Error('User not found');
 
-      const startAt = (time && !time.match(/^0*:?0*$/))
-        ? `${date}T${time}:00.000Z`
+      const hasTime = !!(time && !time.match(/^0*:?0*$/));
+      const startAt = hasTime
+        ? new Date(`${date}T${time}:00`).toISOString()
         : `${date}T00:00:00.000Z`;
-      const allDay = !(time && !time.match(/^0*:?0*$/));
+      const allDay = !hasTime;
       const requiredActions = actions
         .split('\n')
         .map(a => a.trim())

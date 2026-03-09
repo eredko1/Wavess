@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -48,6 +48,10 @@ export default function EventDetailScreen() {
   const [mode, setMode] = useState<Mode>('view');
   const [saving, setSaving] = useState(false);
   const [completedActions, setCompletedActions] = useState<Set<number>>(new Set());
+  const [tasks, setTasks] = useState<{ id: string; title: string; is_complete: boolean }[]>([]);
+  const [newTask, setNewTask] = useState('');
+  const [addingTask, setAddingTask] = useState(false);
+  const familyIdRef = useRef<string | null>(null);
 
   // Edit form state
   const [editTitle, setEditTitle] = useState('');
@@ -90,11 +94,21 @@ export default function EventDetailScreen() {
         if (stored) setCompletedActions(new Set(JSON.parse(stored)));
       }
 
+      familyIdRef.current = user.family_id;
+
       const { data: kids } = await supabase
         .from('children')
         .select('id, name')
         .eq('family_id', user.family_id);
       setChildren(kids ?? []);
+
+      // Load tasks for this event
+      const { data: taskData } = await supabase
+        .from('tasks')
+        .select('id, title, is_complete')
+        .eq('event_id', id)
+        .order('created_at', { ascending: true });
+      setTasks(taskData ?? []);
 
       setLoading(false);
     }
@@ -156,10 +170,10 @@ export default function EventDetailScreen() {
 
     setSaving(true);
     const startAt = (!editAllDay && editTime)
-      ? `${editDate}T${editTime}:00.000Z`
+      ? new Date(`${editDate}T${editTime}:00`).toISOString()
       : `${editDate}T00:00:00.000Z`;
     const endAt = (!editAllDay && editEndTime)
-      ? `${editDate}T${editEndTime}:00.000Z`
+      ? new Date(`${editDate}T${editEndTime}:00`).toISOString()
       : null;
     const actions = editActions
       .split('\n')
@@ -242,6 +256,25 @@ export default function EventDetailScreen() {
         },
       ]
     );
+  }
+
+  async function handleAddTask() {
+    const title = newTask.trim();
+    if (!title || !event || !familyIdRef.current) return;
+    setAddingTask(true);
+    const { data } = await supabase
+      .from('tasks')
+      .insert({ family_id: familyIdRef.current, event_id: event.id, title })
+      .select('id, title, is_complete')
+      .single();
+    if (data) setTasks(prev => [...prev, data as { id: string; title: string; is_complete: boolean }]);
+    setNewTask('');
+    setAddingTask(false);
+  }
+
+  async function toggleTask(taskId: string, current: boolean) {
+    await supabase.from('tasks').update({ is_complete: !current }).eq('id', taskId);
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, is_complete: !current } : t));
   }
 
   function startEditing() {
@@ -339,6 +372,46 @@ export default function EventDetailScreen() {
                 <Text style={styles.notesText}>{event.description}</Text>
               </View>
             ) : null}
+
+            {/* Tasks */}
+            <View style={styles.actionsSection}>
+              <Text style={styles.sectionLabel}>Assigned tasks</Text>
+              {tasks.map(task => (
+                <TouchableOpacity
+                  key={task.id}
+                  style={styles.actionRow}
+                  onPress={() => toggleTask(task.id, task.is_complete)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={task.is_complete ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                    size={18}
+                    color={task.is_complete ? '#34C759' : '#636366'}
+                  />
+                  <Text style={[styles.actionText, { color: task.is_complete ? '#636366' : '#EBEBF5' }, task.is_complete && styles.actionTextDone]}>
+                    {task.title}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                <TextInput
+                  style={[styles.input, { flex: 1, paddingVertical: 8, fontSize: 14 }]}
+                  value={newTask}
+                  onChangeText={setNewTask}
+                  placeholder="Add a task…"
+                  placeholderTextColor="#636366"
+                  returnKeyType="done"
+                  onSubmitEditing={handleAddTask}
+                />
+                <TouchableOpacity
+                  onPress={handleAddTask}
+                  disabled={addingTask || !newTask.trim()}
+                  style={{ opacity: addingTask || !newTask.trim() ? 0.4 : 1 }}
+                >
+                  <Ionicons name="add-circle" size={28} color="#6366F1" />
+                </TouchableOpacity>
+              </View>
+            </View>
 
             {event.required_actions && event.required_actions.length > 0 && (
               <View style={styles.actionsSection}>

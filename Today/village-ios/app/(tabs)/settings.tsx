@@ -74,6 +74,9 @@ export default function SettingsScreen() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
 
+  // Family join code
+  const [joinCode, setJoinCode] = useState<string | null>(null);
+
   // Calendar token for live subscription
   const [calToken, setCalToken] = useState<string | null>(null);
 
@@ -132,6 +135,15 @@ export default function SettingsScreen() {
     if (tokenRes.ok) {
       const json = await tokenRes.json();
       setCalToken(json.token);
+    }
+
+    // Fetch family join code
+    const codeRes = await fetch(`${LOCAL_API_BASE}/api/family/join-code`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (codeRes.ok) {
+      const json = await codeRes.json();
+      setJoinCode(json.code ?? null);
     }
   }
 
@@ -400,6 +412,31 @@ export default function SettingsScreen() {
                   {i < members.length - 1 && <View style={styles.divider} />}
                 </View>
               ))}
+            </View>
+          </View>
+        )}
+
+        {/* Family Join Code */}
+        {joinCode && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>FAMILY CODE</Text>
+            <View style={styles.card}>
+              <View style={[styles.cardRow, { justifyContent: 'center', paddingVertical: 16, gap: 16 }]}>
+                <Text style={{ color: '#FFFFFF', fontSize: 28, fontWeight: '700', letterSpacing: 8, fontVariant: ['tabular-nums'] }}>
+                  {joinCode}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => Share.share({ message: `Join my family on Village with code: ${joinCode}` })}
+                  style={[styles.iconBtn, { backgroundColor: 'rgba(99,102,241,0.2)', width: 'auto', paddingHorizontal: 12 }]}
+                >
+                  <Text style={{ color: '#818CF8', fontSize: 13, fontWeight: '600' }}>Share</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+                <Text style={{ color: '#636366', fontSize: 12, lineHeight: 16, textAlign: 'center' }}>
+                  Share this code with your co-parent. They enter it in the app to join instantly.
+                </Text>
+              </View>
             </View>
           </View>
         )}
