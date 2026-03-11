@@ -80,15 +80,17 @@ export default function LoopScreen() {
 
       setIsWeekendFree(!weekendEvents || weekendEvents.length === 0);
 
-      // Get children to determine age ranges
+      // Get children to determine age ranges and interests
       const { data: kids } = await supabase
         .from('children')
-        .select('age_in_months')
+        .select('age_in_months, interests')
         .eq('family_id', familyId);
 
       const ages = (kids ?? [])
         .map((k: Pick<Child, 'age_in_months'>) => k.age_in_months)
         .filter((a): a is number => a !== null);
+
+      const allInterests: string[] = [...new Set((kids ?? []).flatMap((k: any) => k.interests ?? []))];
 
       const minAge = ages.length > 0 ? Math.min(...ages) : 0;
       const maxAge = ages.length > 0 ? Math.max(...ages) : 144;
@@ -124,7 +126,9 @@ export default function LoopScreen() {
       if (zip) {
         localQuery = localQuery.eq('zip_code', zip);
       }
-      if (familyInterests.length > 0) {
+      if (allInterests.length > 0) {
+        localQuery = localQuery.overlaps('tags', allInterests);
+      } else if (familyInterests.length > 0) {
         localQuery = localQuery.overlaps('tags', familyInterests);
       }
 

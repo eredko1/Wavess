@@ -78,15 +78,17 @@ export default function LoopScreen() {
 
       setIsWeekendFree(!weekendEvents || weekendEvents.length === 0);
 
-      // Get children to determine age ranges
+      // Get children to determine age ranges and interests
       const { data: kids } = await supabase
         .from('children')
-        .select('age_in_months')
+        .select('age_in_months, interests')
         .eq('family_id', familyId);
 
       const ages = (kids ?? [])
         .map((k: Pick<Child, 'age_in_months'>) => k.age_in_months)
         .filter((a): a is number => a !== null);
+
+      const allInterests: string[] = [...new Set((kids ?? []).flatMap((k: any) => k.interests ?? []))];
 
       const minAge = ages.length > 0 ? Math.min(...ages) : 0;
       const maxAge = ages.length > 0 ? Math.max(...ages) : 144;
@@ -101,14 +103,15 @@ export default function LoopScreen() {
 
       setThemes((themesData ?? []) as ThemeWithActivities[]);
 
-      // Fetch local events (use family zip code if available)
+      // Fetch local events (use family zip code + interests if available)
       const { data: familyData } = await supabase
         .from('families')
-        .select('zip_code')
+        .select('zip_code, interests')
         .eq('id', familyId)
         .maybeSingle();
 
       const zip = familyData?.zip_code;
+      const familyInterests: string[] = familyData?.interests ?? [];
 
       let localQuery = supabase
         .from('local_events')
@@ -120,6 +123,11 @@ export default function LoopScreen() {
 
       if (zip) {
         localQuery = localQuery.eq('zip_code', zip);
+      }
+      if (allInterests.length > 0) {
+        localQuery = localQuery.overlaps('tags', allInterests);
+      } else if (familyInterests.length > 0) {
+        localQuery = localQuery.overlaps('tags', familyInterests);
       }
 
       const { data: localData } = await localQuery;

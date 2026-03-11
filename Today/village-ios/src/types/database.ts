@@ -38,6 +38,7 @@ export interface Child {
   dob: string | null;
   age_in_months: number | null;
   notes: string | null;
+  interests: string[];
   created_at: string;
 }
 

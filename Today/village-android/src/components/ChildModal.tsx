@@ -15,6 +15,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import type { Child } from '@/types/database';
 
+const INTEREST_CATEGORIES = [
+  { key: 'sports', label: 'Sports', emoji: '⚽' },
+  { key: 'arts', label: 'Arts & Crafts', emoji: '🎨' },
+  { key: 'music', label: 'Music', emoji: '🎵' },
+  { key: 'stem', label: 'STEM & Coding', emoji: '🔬' },
+  { key: 'nature', label: 'Nature & Outdoors', emoji: '🌿' },
+  { key: 'dance', label: 'Dance', emoji: '💃' },
+  { key: 'library', label: 'Library & Reading', emoji: '📖' },
+  { key: 'swimming', label: 'Swimming', emoji: '🏊' },
+  { key: 'martial_arts', label: 'Martial Arts', emoji: '🥋' },
+  { key: 'theater', label: 'Theater & Drama', emoji: '🎭' },
+  { key: 'fitness', label: 'Fitness & Health', emoji: '🏃' },
+  { key: 'community', label: 'Community Programs', emoji: '🏘️' },
+  { key: 'school', label: 'School & Academic', emoji: '📚' },
+];
+
 interface Props {
   visible: boolean;
   child: Child | null; // null = add mode
@@ -27,6 +43,7 @@ export default function ChildModal({ visible, child, familyId, onClose, onSaved 
   const [name, setName] = useState('');
   const [dob, setDob] = useState(''); // YYYY-MM-DD
   const [notes, setNotes] = useState('');
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -34,12 +51,20 @@ export default function ChildModal({ visible, child, familyId, onClose, onSaved 
       setName(child.name);
       setDob(child.dob ?? '');
       setNotes(child.notes ?? '');
+      setSelectedInterests(child.interests ?? []);
     } else {
       setName('');
       setDob('');
       setNotes('');
+      setSelectedInterests([]);
     }
   }, [child, visible]);
+
+  function toggleInterest(key: string) {
+    setSelectedInterests((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  }
 
   async function handleSave() {
     if (!name.trim()) {
@@ -52,6 +77,7 @@ export default function ChildModal({ visible, child, familyId, onClose, onSaved 
       name: name.trim(),
       dob: dob || null,
       notes: notes.trim() || null,
+      interests: selectedInterests,
       family_id: familyId,
     };
 
@@ -149,6 +175,26 @@ export default function ChildModal({ visible, child, familyId, onClose, onSaved 
             multiline
             numberOfLines={3}
           />
+
+          <Text style={styles.label}>Interests</Text>
+          <View style={styles.pillsWrap}>
+            {INTEREST_CATEGORIES.map((cat) => {
+              const on = selectedInterests.includes(cat.key);
+              return (
+                <TouchableOpacity
+                  key={cat.key}
+                  onPress={() => toggleInterest(cat.key)}
+                  style={[styles.pill, on ? styles.pillOn : styles.pillOff]}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.pillEmoji}>{cat.emoji}</Text>
+                  <Text style={[styles.pillLabel, on ? styles.pillLabelOn : styles.pillLabelOff]}>
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </ScrollView>
 
         <View style={styles.footer}>
@@ -218,6 +264,40 @@ const styles = StyleSheet.create({
   multiline: {
     height: 80,
     textAlignVertical: 'top',
+  },
+  pillsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    margin: 3,
+  },
+  pillOff: {
+    backgroundColor: '#2C2C2E',
+  },
+  pillOn: {
+    backgroundColor: 'rgba(99,102,241,0.25)',
+    borderWidth: 1,
+    borderColor: '#6366F1',
+  },
+  pillEmoji: {
+    fontSize: 14,
+  },
+  pillLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  pillLabelOff: {
+    color: '#8E8E93',
+  },
+  pillLabelOn: {
+    color: '#818CF8',
   },
   footer: {
     padding: 20,
