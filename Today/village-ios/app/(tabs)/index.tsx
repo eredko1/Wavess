@@ -112,7 +112,7 @@ export default function TimelineScreen() {
         .order('start_at', { ascending: true });
     }
 
-    const { data: events } = await query.limit(60);
+    const { data: events } = await query.limit(500);
     const evts = (events ?? []) as EventWithChild[];
     setSections(groupIntoSections(evts));
 
