@@ -18,6 +18,7 @@ import { supabase } from '@/lib/supabase';
 import EventCard from '@/components/EventCard';
 import IngestSheet from '@/components/IngestSheet';
 import AddEventSheet from '@/components/AddEventSheet';
+import EmptyState from '@/components/EmptyState';
 import type { EventWithChild, Family } from '@/types/database';
 
 interface Section {
@@ -360,11 +361,13 @@ export default function TimelineScreen() {
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>📅</Text>
-            <Text style={styles.emptyText}>No upcoming events</Text>
-            <Text style={styles.emptyHint}>Tap + to add manually, or tap ✦ to extract from text or photos.</Text>
-          </View>
+          <EmptyState
+            icon="calendar-outline"
+            title="No upcoming events"
+            subtitle="Forward a screenshot, scan a flyer, or add events manually."
+            ctaLabel="Add Event"
+            onCta={() => setAddOpen(true)}
+          />
         }
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
@@ -541,27 +544,6 @@ const styles = StyleSheet.create({
     color: '#F59E0B',
     fontSize: 11,
     fontWeight: '600',
-  },
-  empty: {
-    alignItems: 'center',
-    paddingTop: 80,
-    paddingHorizontal: 40,
-  },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: 12,
-  },
-  emptyText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptyHint: {
-    color: '#8E8E93',
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
   },
   fab: {
     position: 'absolute',

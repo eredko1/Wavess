@@ -9,11 +9,13 @@ import {
   Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { LOCAL_API_BASE } from '@/lib/config';
 import LoopCard from '@/components/LoopCard';
+import EmptyState from '@/components/EmptyState';
 import type { ThemeWithActivities, LocalEvent, Child } from '@/types/database';
 
 interface AISuggestion {
@@ -39,6 +41,7 @@ function getNextWeekend(): { sat: string; sun: string } {
 
 export default function LoopScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [themes, setThemes] = useState<ThemeWithActivities[]>([]);
   const [localEvents, setLocalEvents] = useState<LocalEvent[]>([]);
   const [isWeekendFree, setIsWeekendFree] = useState(false);
@@ -250,12 +253,14 @@ export default function LoopScreen() {
           </View>
         )}
 
-        {themes.length === 0 && localEvents.length === 0 && (
-          <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>✨</Text>
-            <Text style={styles.emptyText}>No suggestions yet</Text>
-            <Text style={styles.emptyHint}>Add your children's ages to get personalized activity ideas.</Text>
-          </View>
+        {themes.length === 0 && localEvents.length === 0 && aiSuggestions.length === 0 && !aiLoading && (
+          <EmptyState
+            icon="sparkles-outline"
+            title="No ideas yet"
+            subtitle="Add your children's ages and family interests to get personalized weekend ideas."
+            ctaLabel="Set Interests"
+            onCta={() => router.push('/(tabs)/children')}
+          />
         )}
 
         {/* Business CTA */}
@@ -423,26 +428,5 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontSize: 13,
     lineHeight: 18,
-  },
-  empty: {
-    alignItems: 'center',
-    paddingTop: 80,
-    paddingHorizontal: 40,
-  },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: 12,
-  },
-  emptyText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptyHint: {
-    color: '#8E8E93',
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
   },
 });

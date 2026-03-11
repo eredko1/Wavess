@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.eredko.village"
+      "bundleIdentifier": "com.village.app"
     },
     "android": {
-      "package": "com.eredko.village",
+      "package": "com.village.app",
       "userInterfaceStyle": "dark",
       "softwareKeyboardLayoutMode": "pan",
       "predictiveBackGestureEnabled": false,
@@ -77,7 +77,16 @@
           "photosPermission": "Village accesses your photos to scan event flyers."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsImageWithMaxCount": 1
+          },
+          "androidIntentFilters": ["image/*"]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -2,6 +2,8 @@ import 'react-native-url-polyfill/auto';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { ShareIntentProvider } from 'expo-share-intent';
+import ShareIntentHandler from '@/components/ShareIntentHandler';
 import * as Linking from 'expo-linking';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -9,9 +11,11 @@ import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { LOCAL_API_BASE } from '@/lib/config';
+import WelcomeModal from '@/components/WelcomeModal';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -60,6 +64,7 @@ type FamilyStatus = 'loading' | 'setup_needed' | 'ready';
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [familyStatus, setFamilyStatus] = useState<FamilyStatus>('loading');
+  const [showWelcome, setShowWelcome] = useState(false);
   const router = useRouter();
   const segments = useSegments();
 
@@ -121,22 +126,58 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (familyStatus === 'setup_needed') {
       if (!inSetup) router.replace('/(setup)');
     } else {
-      if (inAuth || inSetup) router.replace('/(tabs)');
+      if (inAuth || inSetup) {
+        router.replace('/(tabs)');
+      } else {
+        // Check if we should show the welcome modal (first-time, no children)
+        async function checkWelcome() {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('family_id')
+            .eq('id', session!.user.id)
+            .maybeSingle();
+          if (userData?.family_id) {
+            const welcomed = await AsyncStorage.getItem('village_welcomed');
+            if (!welcomed) {
+              const { count } = await supabase
+                .from('children')
+                .select('id', { count: 'exact', head: true })
+                .eq('family_id', userData.family_id);
+              if ((count ?? 0) === 0) setShowWelcome(true);
+            }
+          }
+        }
+        checkWelcome();
+      }
     }
   }, [session, familyStatus, segments]);
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <WelcomeModal
+        visible={showWelcome}
+        onDismiss={() => {
+          AsyncStorage.setItem('village_welcomed', '1');
+          setShowWelcome(false);
+        }}
+      />
+    </>
+  );
 }
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <StatusBar style="light" />
-        <AuthGate>
-          <Stack screenOptions={{ headerShown: false }} />
-        </AuthGate>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ShareIntentProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <StatusBar style="light" />
+          <AuthGate>
+            <Stack screenOptions={{ headerShown: false }} />
+          </AuthGate>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+      <ShareIntentHandler />
+    </ShareIntentProvider>
   );
 }

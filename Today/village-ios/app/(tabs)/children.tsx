@@ -16,6 +16,7 @@ import { supabase } from '@/lib/supabase';
 import { LOCAL_API_BASE } from '@/lib/config';
 import ChildCard from '@/components/ChildCard';
 import ChildModal from '@/components/ChildModal';
+import EmptyState from '@/components/EmptyState';
 import type { ChildWithNextEvent } from '@/types/database';
 
 const CATEGORIES = [
@@ -291,11 +292,13 @@ export default function ChildrenScreen() {
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>👶</Text>
-            <Text style={styles.emptyText}>No children yet</Text>
-            <Text style={styles.emptyHint}>Tap + to add your first child.</Text>
-          </View>
+          <EmptyState
+            icon="people-outline"
+            title="No children added yet"
+            subtitle="Add your children to get personalized activity ideas and event reminders."
+            ctaLabel="Add Child"
+            onCta={openAdd}
+          />
         }
         ListFooterComponent={
           <InterestsPicker
@@ -361,26 +364,6 @@ const styles = StyleSheet.create({
   },
   row: {
     paddingHorizontal: 10,
-  },
-  empty: {
-    alignItems: 'center',
-    paddingTop: 80,
-    paddingHorizontal: 40,
-  },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: 12,
-  },
-  emptyText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptyHint: {
-    color: '#8E8E93',
-    fontSize: 14,
-    textAlign: 'center',
   },
 });
 
