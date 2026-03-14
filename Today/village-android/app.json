@@ -77,7 +77,16 @@
           "photosPermission": "Village accesses your photos to scan event flyers."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsImageWithMaxCount": 1
+          },
+          "androidIntentFilters": ["image/*"]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

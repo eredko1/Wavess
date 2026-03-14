@@ -10,10 +10,12 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
+import { LOCAL_API_BASE } from '@/lib/config';
 import type { Child } from '@/types/database';
 
 interface Props {
@@ -34,6 +36,9 @@ export default function AddEventSheet({ visible, onClose, onSaved }: Props) {
   const [showChildPicker, setShowChildPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notes, setNotes] = useState('');
+  const [repeat, setRepeat] = useState(false);
+  const [repeatFreq, setRepeatFreq] = useState<'weekly' | 'biweekly'>('weekly');
+  const [repeatUntil, setRepeatUntil] = useState('');
 
   useEffect(() => {
     if (visible) {
@@ -70,6 +75,9 @@ export default function AddEventSheet({ visible, onClose, onSaved }: Props) {
     setNotes('');
     setChildId(null);
     setShowChildPicker(false);
+    setRepeat(false);
+    setRepeatFreq('weekly');
+    setRepeatUntil('');
   }
 
   function handleClose() {
@@ -86,43 +94,72 @@ export default function AddEventSheet({ visible, onClose, onSaved }: Props) {
       Alert.alert('Invalid date', 'Use YYYY-MM-DD format.');
       return;
     }
+    if (repeat && !repeatUntil.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      Alert.alert('Required', 'Please enter a valid "until" date (YYYY-MM-DD).');
+      return;
+    }
 
     setSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
 
-      const { data: user } = await supabase
-        .from('users')
-        .select('family_id')
-        .eq('id', session.user.id)
-        .maybeSingle();
-      if (!user) throw new Error('User not found');
-
       const hasTime = !!(time && !time.match(/^0*:?0*$/));
-      const startAt = hasTime
-        ? new Date(`${date}T${time}:00`).toISOString()
-        : `${date}T00:00:00.000Z`;
-      const allDay = !hasTime;
       const requiredActions = actions
         .split('\n')
         .map(a => a.trim())
         .filter(Boolean);
 
-      const { error } = await supabase.from('events').insert({
-        family_id: user.family_id,
-        child_id: childId,
-        title: title.trim(),
-        start_at: startAt,
-        all_day: allDay,
-        location: location.trim() || null,
-        required_actions: requiredActions,
-        description: notes.trim() || null,
-        status: 'confirmed',
-        source: 'manual',
-      });
+      if (repeat) {
+        const res = await fetch(`${LOCAL_API_BASE}/api/events/recurring`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            title: title.trim(),
+            child_id: childId ?? undefined,
+            date,
+            time: hasTime ? time : undefined,
+            location: location.trim() || undefined,
+            notes: notes.trim() || undefined,
+            required_actions: requiredActions,
+            repeat: repeatFreq,
+            repeat_until: repeatUntil,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Failed to create recurring events');
+        Alert.alert('Done', `${data.count} event${data.count !== 1 ? 's' : ''} added!`);
+      } else {
+        const { data: user } = await supabase
+          .from('users')
+          .select('family_id')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        if (!user) throw new Error('User not found');
 
-      if (error) throw error;
+        const startAt = hasTime
+          ? new Date(`${date}T${time}:00`).toISOString()
+          : `${date}T00:00:00.000Z`;
+
+        const { error } = await supabase.from('events').insert({
+          family_id: user.family_id,
+          child_id: childId,
+          title: title.trim(),
+          start_at: startAt,
+          all_day: !hasTime,
+          location: location.trim() || null,
+          required_actions: requiredActions,
+          description: notes.trim() || null,
+          status: 'confirmed',
+          source: 'manual',
+        });
+
+        if (error) throw error;
+      }
+
       handleClose();
       onSaved();
     } catch (err) {
@@ -254,6 +291,49 @@ export default function AddEventSheet({ visible, onClose, onSaved }: Props) {
             numberOfLines={3}
             textAlignVertical="top"
           />
+
+          <View style={styles.repeatRow}>
+            <Text style={styles.repeatLabel}>Repeat this event</Text>
+            <Switch
+              value={repeat}
+              onValueChange={setRepeat}
+              trackColor={{ false: '#3A3A3C', true: '#6366F1' }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
+          {repeat && (
+            <View style={styles.repeatBox}>
+              <Text style={styles.label}>Frequency</Text>
+              <View style={styles.freqRow}>
+                <TouchableOpacity
+                  style={[styles.freqBtn, repeatFreq === 'weekly' && styles.freqBtnActive]}
+                  onPress={() => setRepeatFreq('weekly')}
+                >
+                  <Text style={[styles.freqBtnText, repeatFreq === 'weekly' && styles.freqBtnTextActive]}>
+                    Every week
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.freqBtn, repeatFreq === 'biweekly' && styles.freqBtnActive]}
+                  onPress={() => setRepeatFreq('biweekly')}
+                >
+                  <Text style={[styles.freqBtnText, repeatFreq === 'biweekly' && styles.freqBtnTextActive]}>
+                    Every 2 weeks
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.label}>Until (YYYY-MM-DD)</Text>
+              <TextInput
+                style={styles.input}
+                value={repeatUntil}
+                onChangeText={setRepeatUntil}
+                placeholder="2026-06-01"
+                placeholderTextColor="#636366"
+                keyboardType="numbers-and-punctuation"
+              />
+            </View>
+          )}
         </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 8 }]}>
@@ -371,5 +451,47 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  repeatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    paddingVertical: 4,
+  },
+  repeatLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  repeatBox: {
+    backgroundColor: '#2C2C2E',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  freqRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  freqBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#3A3A3C',
+    alignItems: 'center',
+  },
+  freqBtnActive: {
+    backgroundColor: '#6366F1',
+  },
+  freqBtnText: {
+    color: '#8E8E93',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  freqBtnTextActive: {
+    color: '#FFFFFF',
   },
 });
