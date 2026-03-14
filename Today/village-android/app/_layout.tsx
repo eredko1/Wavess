@@ -59,6 +59,24 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
 
+  // Handle notification taps → navigate to event
+  useEffect(() => {
+    Notifications.getLastNotificationResponseAsync().then(response => {
+      if (!response) return;
+      const data = response.notification.request.content.data as Record<string, string>;
+      if (data?.event_id) router.push(`/event/${data.event_id}` as any);
+      else if (data?.screen === 'loop') router.push('/(tabs)/loop' as any);
+    });
+
+    const sub = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data as Record<string, string>;
+      if (data?.event_id) router.push(`/event/${data.event_id}` as any);
+      else if (data?.screen === 'loop') router.push('/(tabs)/loop' as any);
+    });
+
+    return () => sub.remove();
+  }, []);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
