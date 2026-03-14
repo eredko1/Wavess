@@ -10,6 +10,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +29,8 @@ interface ChildRow {
 export default function SetupScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
 
   const [step, setStep] = useState<Step>('name');
   const [familyId, setFamilyId] = useState('');
@@ -209,6 +212,7 @@ export default function SetupScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        <View style={isTablet ? { maxWidth: 520, alignSelf: 'center', width: '100%' } : undefined}>
         <Text style={styles.logo}>🏘️</Text>
         <Text style={styles.title}>Village</Text>
 
@@ -414,6 +418,7 @@ export default function SetupScreen() {
             </TouchableOpacity>
           </View>
         )}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
