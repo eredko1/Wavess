@@ -54,6 +54,8 @@ export interface Event {
   all_day: boolean;
   location: string | null;
   required_actions: string[] | null;
+  completed_actions: number[];
+  assigned_to: string | null;
   status: EventStatus;
   source: string;
   created_at: string;
@@ -120,6 +122,7 @@ export interface ParsedEvent {
 // Joined types for UI
 export interface EventWithChild extends Event {
   children?: Pick<Child, "id" | "name" | "age_in_months"> | null;
+  assigned_to_name?: string | null;
 }
 
 export interface ChildWithNextEvent extends Child {

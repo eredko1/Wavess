@@ -15,7 +15,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import type { EventWithChild, Child } from '@/types/database';
 
@@ -53,6 +52,7 @@ export default function EventDetailScreen() {
   const familyIdRef = useRef<string>('');
   const [tasks, setTasks] = useState<{ id: string; title: string; is_complete: boolean; assigned_to: string | null }[]>([]);
   const [taskInput, setTaskInput] = useState('');
+  const [members, setMembers] = useState<{ id: string; display_name: string }[]>([]);
 
   // Edit form state
   const [editTitle, setEditTitle] = useState('');
@@ -65,6 +65,7 @@ export default function EventDetailScreen() {
   const [editActions, setEditActions] = useState('');
   const [editAllDay, setEditAllDay] = useState(false);
   const [showChildPicker, setShowChildPicker] = useState(false);
+  const [editAssigneeId, setEditAssigneeId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -88,11 +89,20 @@ export default function EventDetailScreen() {
         .single();
 
       if (data) {
-        setEvent(data as EventWithChild);
-        populateEditFields(data as EventWithChild);
-        // Load persisted completed actions
-        const stored = await AsyncStorage.getItem(`actions:${id}`);
-        if (stored) setCompletedActions(new Set(JSON.parse(stored)));
+        const ev = data as EventWithChild;
+        // Look up display name of assignee
+        if (ev.assigned_to) {
+          const { data: assigneeUser } = await supabase
+            .from('users')
+            .select('display_name')
+            .eq('id', ev.assigned_to)
+            .maybeSingle();
+          ev.assigned_to_name = assigneeUser?.display_name ?? null;
+        }
+        setEvent(ev);
+        populateEditFields(ev);
+        // Initialize completed actions from DB
+        setCompletedActions(new Set(ev.completed_actions ?? []));
       }
 
       familyIdRef.current = user.family_id;
@@ -102,6 +112,13 @@ export default function EventDetailScreen() {
         .select('id, name')
         .eq('family_id', user.family_id);
       setChildren(kids ?? []);
+
+      // Fetch family members for assignee picker
+      const { data: memberData } = await supabase
+        .from('users')
+        .select('id, display_name')
+        .eq('family_id', user.family_id);
+      setMembers(memberData ?? []);
 
       // Load tasks for this event
       const { data: taskData } = await supabase
@@ -128,6 +145,7 @@ export default function EventDetailScreen() {
     setEditChildId(e.child_id);
     setEditActions((e.required_actions ?? []).join('\n'));
     setEditAllDay(e.all_day);
+    setEditAssigneeId(e.assigned_to ?? null);
   }
 
   async function handleAddTask() {
@@ -173,7 +191,8 @@ export default function EventDetailScreen() {
     const next = new Set(completedActions);
     if (next.has(index)) next.delete(index); else next.add(index);
     setCompletedActions(next);
-    await AsyncStorage.setItem(`actions:${id}`, JSON.stringify([...next]));
+    const arr = [...next];
+    await supabase.from('events').update({ completed_actions: arr }).eq('id', event!.id);
   }
 
   async function handleSave() {
@@ -210,6 +229,7 @@ export default function EventDetailScreen() {
         description: editDescription.trim() || null,
         child_id: editChildId,
         required_actions: actions,
+        assigned_to: editAssigneeId || null,
       })
       .eq('id', event.id);
 
@@ -366,6 +386,13 @@ export default function EventDetailScreen() {
               </View>
             )}
 
+            <View style={styles.metaRow}>
+              <Ionicons name="person-outline" size={16} color="#8E8E93" />
+              <Text style={[styles.metaText, !event.assigned_to_name && { color: '#636366' }]}>
+                {event.assigned_to_name ?? 'Unassigned'}
+              </Text>
+            </View>
+
             {event.description ? (
               <View style={styles.notesSection}>
                 <Text style={styles.sectionLabel}>Notes</Text>
@@ -517,6 +544,35 @@ export default function EventDetailScreen() {
                 placeholderTextColor="#636366"
               />
             </View>
+
+            {members.length > 0 && (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Assigned to</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 2 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      style={[styles.chip, editAssigneeId === null && styles.chipSelected]}
+                      onPress={() => setEditAssigneeId(null)}
+                    >
+                      <Text style={[styles.chipText, editAssigneeId === null && styles.chipTextSelected]}>
+                        Unassigned
+                      </Text>
+                    </TouchableOpacity>
+                    {members.map(m => (
+                      <TouchableOpacity
+                        key={m.id}
+                        style={[styles.chip, editAssigneeId === m.id && styles.chipSelected]}
+                        onPress={() => setEditAssigneeId(m.id)}
+                      >
+                        <Text style={[styles.chipText, editAssigneeId === m.id && styles.chipTextSelected]}>
+                          {m.display_name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+            )}
 
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Notes</Text>
@@ -861,5 +917,25 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#1C1C1E',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  chipSelected: {
+    backgroundColor: 'rgba(99,102,241,0.25)',
+    borderColor: '#6366F1',
+  },
+  chipText: {
+    color: '#8E8E93',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  chipTextSelected: {
+    color: '#818CF8',
   },
 });
