@@ -53,20 +53,38 @@ export default function ShareIntentHandler() {
       });
 
       const data = await res.json();
-      resetShareIntent();
-      setProcessing(false);
 
-      if (res.ok && data.parsed?.length) {
-        router.push('/(tabs)');
-        Alert.alert(
-          `Found ${data.parsed.length} event${data.parsed.length !== 1 ? 's' : ''}! 🎉`,
-          'Check your Timeline — tap any event to review and confirm it.',
-        );
-      } else {
+      if (!res.ok || !data.parsed?.length) {
+        resetShareIntent();
+        setProcessing(false);
         Alert.alert(
           'No events found',
           "We couldn't find any events in that image. Try adding an event manually from the Timeline tab.",
         );
+        return;
+      }
+
+      // Auto-confirm all extracted events
+      const confirmRes = await fetch(`${LOCAL_API_BASE}/api/ingest/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ doc_id: data.doc_id, events: data.parsed }),
+      });
+
+      resetShareIntent();
+      setProcessing(false);
+
+      if (confirmRes.ok) {
+        router.push('/(tabs)');
+        Alert.alert(
+          `${data.parsed.length} event${data.parsed.length !== 1 ? 's' : ''} added! 🎉`,
+          'Your Timeline has been updated.',
+        );
+      } else {
+        Alert.alert('Something went wrong', 'Events were found but could not be saved. Please try again.');
       }
     } catch {
       Alert.alert('Something went wrong', 'Could not process the image. Please try again.');
