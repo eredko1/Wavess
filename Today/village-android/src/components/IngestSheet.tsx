@@ -97,13 +97,17 @@ export default function IngestSheet({ visible, onClose, onSaved }: Props) {
       mediaTypes: ['images'],
       base64: true,
       quality: 0.8,
+      saveToPhotosAlbum: false,
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
+      const base64 = asset.base64 ?? null;
+      const mime = normalizeMime(asset.mimeType);
       setImageUri(asset.uri);
-      setImageBase64(asset.base64 ?? null);
-      setImageMime(normalizeMime(asset.mimeType));
+      setImageBase64(base64);
+      setImageMime(mime);
       setSegment('image');
+      if (base64) await doExtract(undefined, base64, mime);
     }
   }
 
@@ -114,37 +118,23 @@ export default function IngestSheet({ visible, onClose, onSaved }: Props) {
     return mime;
   }
 
-  async function handleExtract() {
-    const hasText = segment === 'text' && inputText.trim();
-    const hasImage = segment === 'image' && imageBase64;
-
-    if (!hasText && !hasImage) {
-      setErrorMsg(segment === 'text' ? 'Please enter some text.' : 'Please select an image.');
-      setState('error');
-      return;
-    }
-
+  async function doExtract(text?: string, imageB64?: string, imageMimeType?: string) {
     setState('processing');
     setErrorMsg('');
-
     try {
-      // Get auth session for cookie/token
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
 
       const body: Record<string, string> = {};
-      if (segment === 'text') body.text = inputText;
-      if (segment === 'image' && imageBase64) {
-        body.image_base64 = imageBase64;
-        body.mime_type = imageMime;
+      if (text) body.text = text;
+      if (imageB64) {
+        body.image_base64 = imageB64;
+        body.mime_type = imageMimeType ?? 'image/jpeg';
       }
 
       const res = await fetch(`${LOCAL_API_BASE}/api/ingest`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify(body),
       });
 
@@ -167,6 +157,23 @@ export default function IngestSheet({ visible, onClose, onSaved }: Props) {
       setState('error');
     }
   }
+
+  async function handleExtract() {
+    const hasText = segment === 'text' && inputText.trim();
+    const hasImage = (segment === 'image' || segment === 'camera') && imageBase64;
+    if (!hasText && !hasImage) {
+      setErrorMsg(segment === 'text' ? 'Please enter some text.' : 'Please select an image.');
+      setState('error');
+      return;
+    }
+    await doExtract(
+      hasText ? inputText : undefined,
+      hasImage ? imageBase64! : undefined,
+      hasImage ? imageMime : undefined,
+    );
+  }
+
+
 
   async function handleSave() {
     if (!docId) return;
