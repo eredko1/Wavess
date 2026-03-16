@@ -37,7 +37,8 @@ export default function AddEventSheet({ visible, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [notes, setNotes] = useState('');
   const [repeat, setRepeat] = useState(false);
-  const [repeatFreq, setRepeatFreq] = useState<'weekly' | 'biweekly'>('weekly');
+  const [repeatFreq, setRepeatFreq] = useState<'daily' | 'weekdays' | 'weekends' | 'weekly' | 'biweekly' | 'custom'>('weekly');
+  const [repeatDays, setRepeatDays] = useState<number[]>([]);
   const [repeatUntil, setRepeatUntil] = useState('');
 
   useEffect(() => {
@@ -77,6 +78,7 @@ export default function AddEventSheet({ visible, onClose, onSaved }: Props) {
     setShowChildPicker(false);
     setRepeat(false);
     setRepeatFreq('weekly');
+    setRepeatDays([]);
     setRepeatUntil('');
   }
 
@@ -96,6 +98,10 @@ export default function AddEventSheet({ visible, onClose, onSaved }: Props) {
     }
     if (repeat && !repeatUntil.match(/^\d{4}-\d{2}-\d{2}$/)) {
       Alert.alert('Required', 'Please enter a valid "until" date (YYYY-MM-DD).');
+      return;
+    }
+    if (repeat && repeatFreq === 'custom' && repeatDays.length === 0) {
+      Alert.alert('Required', 'Please select at least one day for custom repeat.');
       return;
     }
 
@@ -126,6 +132,7 @@ export default function AddEventSheet({ visible, onClose, onSaved }: Props) {
             notes: notes.trim() || undefined,
             required_actions: requiredActions,
             repeat: repeatFreq,
+            repeat_days: repeatFreq === 'custom' ? repeatDays : undefined,
             repeat_until: repeatUntil,
           }),
         });
@@ -305,24 +312,48 @@ export default function AddEventSheet({ visible, onClose, onSaved }: Props) {
           {repeat && (
             <View style={styles.repeatBox}>
               <Text style={styles.label}>Frequency</Text>
-              <View style={styles.freqRow}>
-                <TouchableOpacity
-                  style={[styles.freqBtn, repeatFreq === 'weekly' && styles.freqBtnActive]}
-                  onPress={() => setRepeatFreq('weekly')}
-                >
-                  <Text style={[styles.freqBtnText, repeatFreq === 'weekly' && styles.freqBtnTextActive]}>
-                    Every week
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.freqBtn, repeatFreq === 'biweekly' && styles.freqBtnActive]}
-                  onPress={() => setRepeatFreq('biweekly')}
-                >
-                  <Text style={[styles.freqBtnText, repeatFreq === 'biweekly' && styles.freqBtnTextActive]}>
-                    Every 2 weeks
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.freqScroll}>
+                {(
+                  [
+                    { key: 'daily', label: 'Daily' },
+                    { key: 'weekdays', label: 'Weekdays' },
+                    { key: 'weekends', label: 'Weekends' },
+                    { key: 'weekly', label: 'Weekly' },
+                    { key: 'biweekly', label: 'Every 2 wks' },
+                    { key: 'custom', label: 'Custom' },
+                  ] as const
+                ).map(opt => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.freqBtn, repeatFreq === opt.key && styles.freqBtnActive]}
+                    onPress={() => { setRepeatFreq(opt.key); setRepeatDays([]); }}
+                  >
+                    <Text style={[styles.freqBtnText, repeatFreq === opt.key && styles.freqBtnTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {repeatFreq === 'custom' && (
+                <>
+                  <Text style={styles.label}>Days of week</Text>
+                  <View style={styles.dayRow}>
+                    {['S','M','T','W','T','F','S'].map((letter, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[styles.dayBtn, repeatDays.includes(idx) && styles.dayBtnActive]}
+                        onPress={() => setRepeatDays(prev =>
+                          prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx]
+                        )}
+                      >
+                        <Text style={[styles.dayBtnText, repeatDays.includes(idx) && styles.dayBtnTextActive]}>
+                          {letter}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
               <Text style={styles.label}>Until (YYYY-MM-DD)</Text>
               <TextInput
                 style={styles.input}
@@ -471,27 +502,58 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
+  freqScroll: {
+    marginBottom: 4,
+  },
   freqRow: {
     flexDirection: 'row',
     gap: 8,
     marginBottom: 4,
   },
   freqBtn: {
-    flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 8,
     backgroundColor: '#3A3A3C',
     alignItems: 'center',
+    marginRight: 8,
   },
   freqBtnActive: {
     backgroundColor: '#6366F1',
   },
   freqBtnText: {
     color: '#8E8E93',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   freqBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  dayRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  dayBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#3A3A3C',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  dayBtnActive: {
+    backgroundColor: '#6366F1',
+    borderColor: '#6366F1',
+  },
+  dayBtnText: {
+    color: '#8E8E93',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dayBtnTextActive: {
     color: '#FFFFFF',
   },
 });
