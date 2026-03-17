@@ -241,22 +241,26 @@ export default function SettingsScreen() {
       const filename = childId
         ? `village-${children.find(c => c.id === childId)?.name.split(' ')[0].toLowerCase() ?? 'child'}.ics`
         : 'village-calendar.ics';
-      const dest = FileSystem.cacheDirectory + filename;
-      const result = await FileSystem.downloadAsync(url, dest, {
+
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
       });
-      if (result.status !== 200) {
-        Alert.alert('Export failed', 'Could not download calendar.');
+      if (!res.ok) {
+        Alert.alert('Export failed', `Server returned ${res.status}.`);
         return;
       }
+      const icsText = await res.text();
+      const dest = FileSystem.cacheDirectory + filename;
+      await FileSystem.writeAsStringAsync(dest, icsText, { encoding: FileSystem.EncodingType.UTF8 });
+
       const canShare = await Sharing.isAvailableAsync();
       if (!canShare) {
         Alert.alert('Not supported', 'Sharing is not available on this device.');
         return;
       }
       await Sharing.shareAsync(dest, { mimeType: 'text/calendar', UTI: 'public.calendar' });
-    } catch {
-      Alert.alert('Error', 'Network error — check your connection.');
+    } catch (err) {
+      Alert.alert('Export failed', String(err));
     }
   }
 

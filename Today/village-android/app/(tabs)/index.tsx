@@ -99,15 +99,18 @@ export default function TimelineScreen() {
       .eq('family_id', familyId)
       .eq('status', 'confirmed');
 
+    // Use start-of-today so all-day events for today appear in Upcoming, not Past
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
     if (past) {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       query = query
-        .lt('start_at', now.toISOString())
+        .lt('start_at', todayStart.toISOString())
         .gte('start_at', thirtyDaysAgo.toISOString())
         .order('start_at', { ascending: false });
     } else {
       query = query
-        .gte('start_at', now.toISOString())
+        .gte('start_at', todayStart.toISOString())
         .order('start_at', { ascending: true });
     }
 
@@ -252,82 +255,82 @@ export default function TimelineScreen() {
 
   return (
     <View style={styles.root}>
+      {/* Header lives outside SectionList so all touchables work on Android */}
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+        <View style={styles.titleRow}>
+          <View>
+            <Text style={styles.familyName}>{familyName}</Text>
+            <Text style={styles.pageTitle}>Timeline</Text>
+          </View>
+          <TouchableOpacity style={styles.addBtn} onPress={() => setAddOpen(true)}>
+            <Ionicons name="add" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+        {/* Past / Upcoming toggle */}
+        <View style={styles.toggle}>
+          <TouchableOpacity
+            style={[styles.toggleBtn, !showPast && styles.toggleBtnActive]}
+            onPress={() => setShowPast(false)}
+          >
+            <Text style={[styles.toggleText, !showPast && styles.toggleTextActive]}>Upcoming</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleBtn, showPast && styles.toggleBtnActive]}
+            onPress={() => setShowPast(true)}
+          >
+            <Text style={[styles.toggleText, showPast && styles.toggleTextActive]}>Past 30 days</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Child filter chips */}
+        {filterChildren.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginTop: 10 }}
+            contentContainerStyle={{ gap: 6 }}
+          >
+            <TouchableOpacity
+              style={[styles.chip, !selectedChildId && styles.chipActive]}
+              onPress={() => setSelectedChildId(null)}
+            >
+              <Text style={[styles.chipText, !selectedChildId && styles.chipTextActive]}>All</Text>
+            </TouchableOpacity>
+            {filterChildren.map(c => (
+              <TouchableOpacity
+                key={c.id}
+                style={[styles.chip, selectedChildId === c.id && styles.chipActive]}
+                onPress={() => setSelectedChildId(selectedChildId === c.id ? null : c.id)}
+              >
+                <Text style={[styles.chipText, selectedChildId === c.id && styles.chipTextActive]}>
+                  {c.name.split(' ')[0]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={14} color="#636366" />
+          <TextInput
+            style={styles.searchText}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search events…"
+            placeholderTextColor="#636366"
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={14} color="#636366" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       <SectionList
         sections={displaySections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
-        ListHeaderComponent={
-          <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-            <View style={styles.titleRow}>
-              <View>
-                <Text style={styles.familyName}>{familyName}</Text>
-                <Text style={styles.pageTitle}>Timeline</Text>
-              </View>
-              <TouchableOpacity style={styles.addBtn} onPress={() => setAddOpen(true)}>
-                <Ionicons name="add" size={22} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-            {/* Past / Upcoming toggle */}
-            <View style={styles.toggle}>
-              <TouchableOpacity
-                style={[styles.toggleBtn, !showPast && styles.toggleBtnActive]}
-                onPress={() => setShowPast(false)}
-              >
-                <Text style={[styles.toggleText, !showPast && styles.toggleTextActive]}>Upcoming</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toggleBtn, showPast && styles.toggleBtnActive]}
-                onPress={() => setShowPast(true)}
-              >
-                <Text style={[styles.toggleText, showPast && styles.toggleTextActive]}>Past 30 days</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Child filter chips */}
-            {filterChildren.length > 1 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ marginTop: 10 }}
-                contentContainerStyle={{ gap: 6 }}
-              >
-                <TouchableOpacity
-                  style={[styles.chip, !selectedChildId && styles.chipActive]}
-                  onPress={() => setSelectedChildId(null)}
-                >
-                  <Text style={[styles.chipText, !selectedChildId && styles.chipTextActive]}>All</Text>
-                </TouchableOpacity>
-                {filterChildren.map(c => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[styles.chip, selectedChildId === c.id && styles.chipActive]}
-                    onPress={() => setSelectedChildId(selectedChildId === c.id ? null : c.id)}
-                  >
-                    <Text style={[styles.chipText, selectedChildId === c.id && styles.chipTextActive]}>
-                      {c.name.split(' ')[0]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-            <View style={styles.searchRow}>
-              <Ionicons name="search" size={14} color="#636366" />
-              <TextInput
-                style={styles.searchText}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="Search events…"
-                placeholderTextColor="#636366"
-                returnKeyType="search"
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')}>
-                  <Ionicons name="close-circle" size={14} color="#636366" />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        }
         ListEmptyComponent={
           <EmptyState
             icon="calendar-outline"

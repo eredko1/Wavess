@@ -72,6 +72,18 @@ export default function ChildModal({ visible, child, familyId, onClose, onSaved 
       return;
     }
 
+    if (dob) {
+      const parsed = new Date(dob);
+      if (isNaN(parsed.getTime())) {
+        Alert.alert('Invalid date', 'Enter date as YYYY-MM-DD.');
+        return;
+      }
+      if (parsed > new Date()) {
+        Alert.alert('Invalid date', 'Date of birth cannot be in the future.');
+        return;
+      }
+    }
+
     setSaving(true);
     const payload = {
       name: name.trim(),
@@ -139,7 +151,7 @@ export default function ChildModal({ visible, child, familyId, onClose, onSaved 
 
         <View style={styles.headerRow}>
           <Text style={styles.title}>{child ? 'Edit Child' : 'Add Child'}</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={8}>
+          <TouchableOpacity onPress={onClose} style={{ padding: 10 }}>
             <Ionicons name="close" size={22} color="#8E8E93" />
           </TouchableOpacity>
         </View>
