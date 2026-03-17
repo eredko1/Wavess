@@ -100,15 +100,18 @@ export default function TimelineScreen() {
       .eq('family_id', familyId)
       .eq('status', 'confirmed');
 
+    // Use start-of-today so all-day events for today appear in Upcoming, not Past
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
     if (past) {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       query = query
-        .lt('start_at', now.toISOString())
+        .lt('start_at', todayStart.toISOString())
         .gte('start_at', thirtyDaysAgo.toISOString())
         .order('start_at', { ascending: false });
     } else {
       query = query
-        .gte('start_at', now.toISOString())
+        .gte('start_at', todayStart.toISOString())
         .order('start_at', { ascending: true });
     }
 

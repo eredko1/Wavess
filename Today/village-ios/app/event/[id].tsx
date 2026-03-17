@@ -173,7 +173,14 @@ export default function EventDetailScreen() {
     if (next.has(index)) next.delete(index); else next.add(index);
     setCompletedActions(next);
     const arr = [...next];
-    await supabase.from('events').update({ completed_actions: arr }).eq('id', event!.id);
+    const { error } = await supabase
+      .from('events')
+      .update({ completed_actions: arr })
+      .eq('id', event!.id)
+      .eq('family_id', event!.family_id);
+    if (error) {
+      console.error('[toggleAction] update failed:', error.message);
+    }
   }
 
   async function handleSave() {
