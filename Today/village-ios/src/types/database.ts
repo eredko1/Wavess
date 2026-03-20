@@ -67,6 +67,7 @@ export interface Theme {
   slug: string;
   title: string;
   description: string | null;
+  emoji: string | null;
   age_min_months: number;
   age_max_months: number;
   tags: string[] | null;

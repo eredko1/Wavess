@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -25,9 +25,17 @@ interface AISuggestion {
   emoji: string;
 }
 
+type FeedItem =
+  | { type: 'free_banner' }
+  | { type: 'ai_skeleton'; key: string }
+  | { type: 'ai_suggestion'; data: AISuggestion; key: string }
+  | { type: 'local_event'; data: LocalEvent }
+  | { type: 'theme'; data: ThemeWithActivities }
+  | { type: 'business_promo' };
+
 function getNextWeekend(): { sat: string; sun: string } {
   const today = new Date();
-  const day = today.getDay(); // 0=Sun, 6=Sat
+  const day = today.getDay();
   const daysToSat = day === 6 ? 0 : 6 - day;
   const sat = new Date(today);
   sat.setDate(today.getDate() + daysToSat);
@@ -59,26 +67,20 @@ export default function LoopScreen() {
         .select('family_id')
         .eq('id', session.user.id)
         .maybeSingle();
-
       if (!user) return;
 
       const familyId = user.family_id;
       const { sat, sun } = getNextWeekend();
-      const satStart = `${sat}T00:00:00`;
-      const sunEnd = `${sun}T23:59:59`;
 
-      // Check if weekend is free
       const { data: weekendEvents } = await supabase
         .from('events')
         .select('id')
         .eq('family_id', familyId)
-        .gte('start_at', satStart)
-        .lte('start_at', sunEnd)
+        .gte('start_at', `${sat}T00:00:00`)
+        .lte('start_at', `${sun}T23:59:59`)
         .limit(1);
-
       setIsWeekendFree(!weekendEvents || weekendEvents.length === 0);
 
-      // Get children to determine age ranges and interests
       const { data: kids } = await supabase
         .from('children')
         .select('age_in_months, interests')
@@ -87,23 +89,18 @@ export default function LoopScreen() {
       const ages = (kids ?? [])
         .map((k: Pick<Child, 'age_in_months'>) => k.age_in_months)
         .filter((a): a is number => a !== null);
-
-      const allInterests: string[] = [...new Set((kids ?? []).flatMap((k: any) => k.interests ?? []))];
-
+      const allInterests: string[] = [
+        ...new Set((kids ?? []).flatMap((k: any) => k.interests ?? [])),
+      ];
       const minAge = ages.length > 0 ? Math.min(...ages) : 0;
       const maxAge = ages.length > 0 ? Math.max(...ages) : 144;
 
-      // Fetch themes matching any child's age
       const { data: themesData } = await supabase
         .from('themes')
         .select('*, theme_activities(*)')
-        .lte('age_min_months', maxAge)
-        .gte('age_max_months', minAge)
-        .limit(10);
-
+        .limit(20);
       setThemes((themesData ?? []) as ThemeWithActivities[]);
 
-      // Fetch local events (use family zip code + interests if available)
       const { data: familyData } = await supabase
         .from('families')
         .select('zip_code, interests')
@@ -112,6 +109,7 @@ export default function LoopScreen() {
 
       const zip = familyData?.zip_code;
       const familyInterests: string[] = familyData?.interests ?? [];
+      const activeInterests = allInterests.length > 0 ? allInterests : familyInterests;
 
       let localQuery = supabase
         .from('local_events')
@@ -120,20 +118,12 @@ export default function LoopScreen() {
         .gte('start_at', new Date().toISOString())
         .order('start_at', { ascending: true })
         .limit(10);
-
-      if (zip) {
-        localQuery = localQuery.eq('zip_code', zip);
-      }
-      if (allInterests.length > 0) {
-        localQuery = localQuery.overlaps('tags', allInterests);
-      } else if (familyInterests.length > 0) {
-        localQuery = localQuery.overlaps('tags', familyInterests);
-      }
+      if (zip) localQuery = localQuery.eq('zip_code', zip);
+      if (activeInterests.length > 0) localQuery = localQuery.overlaps('tags', activeInterests);
 
       const { data: localData } = await localQuery;
       setLocalEvents((localData ?? []) as LocalEvent[]);
 
-      // Fetch AI suggestions in parallel — non-blocking
       fetch(`${LOCAL_API_BASE}/api/loop/suggestions`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       })
@@ -146,6 +136,36 @@ export default function LoopScreen() {
     fetchData().finally(() => setLoading(false));
   }, []);
 
+  // Build the unified feed
+  const feedItems = useMemo<FeedItem[]>(() => {
+    const items: FeedItem[] = [];
+
+    if (isWeekendFree) items.push({ type: 'free_banner' });
+
+    // 1. Near You — local events first
+    for (const ev of localEvents) {
+      items.push({ type: 'local_event', data: ev });
+    }
+
+    // 2. For You — AI picks after local, feels personalized
+    if (aiLoading) {
+      items.push({ type: 'ai_skeleton', key: 'sk1' });
+      items.push({ type: 'ai_skeleton', key: 'sk2' });
+    } else {
+      for (const s of aiSuggestions) {
+        items.push({ type: 'ai_suggestion', data: s, key: s.title });
+      }
+    }
+
+    // 3. Weekend Themes — cap at 4 before the business promo
+    for (const theme of themes.slice(0, 4)) {
+      items.push({ type: 'theme', data: theme });
+    }
+
+    items.push({ type: 'business_promo' });
+    return items;
+  }, [isWeekendFree, aiLoading, aiSuggestions, themes, localEvents]);
+
   if (loading) {
     return (
       <View style={[styles.root, styles.center]}>
@@ -153,6 +173,13 @@ export default function LoopScreen() {
       </View>
     );
   }
+
+  const isEmpty =
+    !loading &&
+    !aiLoading &&
+    themes.length === 0 &&
+    localEvents.length === 0 &&
+    aiSuggestions.length === 0;
 
   return (
     <View style={styles.root}>
@@ -163,105 +190,10 @@ export default function LoopScreen() {
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <Text style={styles.pageTitle}>Loop</Text>
-          <Text style={styles.pageSubtitle}>Ideas for your family this weekend</Text>
+          <Text style={styles.pageSubtitle}>Weekend ideas for your family</Text>
         </View>
 
-        {/* Free day banner */}
-        {isWeekendFree && (
-          <View style={styles.section}>
-            <LinearGradient
-              colors={['rgba(99,102,241,0.3)', 'rgba(139,92,246,0.15)']}
-              style={styles.freeBanner}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={styles.freeBannerInner}>
-                <Text style={styles.freeEmoji}>🎉</Text>
-                <View>
-                  <Text style={styles.freeBannerTitle}>Weekend is free!</Text>
-                  <Text style={styles.freeBannerSub}>No events scheduled — try a Village Loop.</Text>
-                </View>
-              </View>
-            </LinearGradient>
-          </View>
-        )}
-
-        {/* AI suggestions */}
-        {(aiLoading || aiSuggestions.length > 0) && (
-          <View style={styles.section}>
-            <View style={styles.aiHeader}>
-              <Text style={styles.sectionTitle}>AI Pick for You</Text>
-              <Text style={styles.aiLabel}>✦ Gemini</Text>
-            </View>
-            {aiLoading ? (
-              <View style={{ paddingHorizontal: 16, gap: 10 }}>
-                {[1, 2].map((i) => (
-                  <View key={i} style={styles.aiSkeleton} />
-                ))}
-              </View>
-            ) : (
-              <View style={{ paddingHorizontal: 16, gap: 10 }}>
-                {aiSuggestions.map((s, i) => (
-                  <View key={i} style={styles.aiCard}>
-                    <Text style={styles.aiEmoji}>{s.emoji}</Text>
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.aiCardHeader}>
-                        <Text style={styles.aiCardTitle}>{s.title}</Text>
-                        <View style={styles.aiCategoryPill}>
-                          <Text style={styles.aiCategoryText}>{s.category}</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.aiCardDesc}>{s.description}</Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Local events */}
-        {localEvents.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Near You</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.localScroll}
-            >
-              {localEvents.map((ev) => (
-                <TouchableOpacity
-                  key={ev.id}
-                  style={styles.localPill}
-                  onPress={() => ev.registration_url && Linking.openURL(ev.registration_url)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.localPillTitle} numberOfLines={2}>{ev.title}</Text>
-                  <Text style={styles.localPillDate}>
-                    {new Date(ev.start_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </Text>
-                  {ev.cost_cents === 0 && (
-                    <View style={styles.freePill}>
-                      <Text style={styles.freePillText}>Free</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Weekend themes */}
-        {themes.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Weekend Themes</Text>
-            {themes.map((theme) => (
-              <LoopCard key={theme.id} theme={theme} />
-            ))}
-          </View>
-        )}
-
-        {themes.length === 0 && localEvents.length === 0 && aiSuggestions.length === 0 && !aiLoading && (
+        {isEmpty ? (
           <EmptyState
             icon="sparkles-outline"
             title="No ideas yet"
@@ -269,14 +201,126 @@ export default function LoopScreen() {
             ctaLabel="Set Interests"
             onCta={() => router.push('/(tabs)/children')}
           />
-        )}
+        ) : (
+          feedItems.map((item, idx) => {
+            switch (item.type) {
+              case 'free_banner':
+                return (
+                  <View key="free-banner" style={styles.feedItem}>
+                    <LinearGradient
+                      colors={['rgba(99,102,241,0.3)', 'rgba(139,92,246,0.15)']}
+                      style={styles.freeBanner}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <Text style={styles.freeEmoji}>🎉</Text>
+                      <View>
+                        <Text style={styles.freeBannerTitle}>Weekend is free!</Text>
+                        <Text style={styles.freeBannerSub}>
+                          No events scheduled — pick a Loop to try.
+                        </Text>
+                      </View>
+                    </LinearGradient>
+                  </View>
+                );
 
-        {/* Business CTA */}
-        <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-          <TouchableOpacity onPress={() => Linking.openURL('https://village-eugred-1544s-projects.vercel.app/for-businesses').catch(() => {})}>
-            <Text style={{ color: '#636366', fontSize: 13 }}>Are you a local business? List your events →</Text>
-          </TouchableOpacity>
-        </View>
+              case 'ai_skeleton':
+                return <View key={item.key} style={[styles.feedItem, styles.aiSkeleton]} />;
+
+              case 'ai_suggestion':
+                return (
+                  <View key={item.key} style={styles.feedItem}>
+                    <View style={styles.aiBadgeRow}>
+                      <Text style={styles.aiBadge}>✦ AI Pick</Text>
+                    </View>
+                    <View style={styles.aiCard}>
+                      <Text style={styles.aiEmoji}>{item.data.emoji}</Text>
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.aiCardHeader}>
+                          <Text style={styles.aiCardTitle}>{item.data.title}</Text>
+                          <View style={styles.aiCategoryPill}>
+                            <Text style={styles.aiCategoryText}>{item.data.category}</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.aiCardDesc}>{item.data.description}</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+
+              case 'local_event':
+                return (
+                  <View key={item.data.id} style={styles.feedItem}>
+                    <View style={styles.sectionBadgeRow}>
+                      <Ionicons name="location-outline" size={12} color="#8E8E93" />
+                      <Text style={styles.sectionBadge}>Near You</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.localCard}
+                      onPress={() =>
+                        item.data.registration_url && Linking.openURL(item.data.registration_url)
+                      }
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.localCardMain}>
+                        <Text style={styles.localCardTitle} numberOfLines={2}>
+                          {item.data.title}
+                        </Text>
+                        {item.data.venue_name && (
+                          <Text style={styles.localCardVenue}>📍 {item.data.venue_name}</Text>
+                        )}
+                        <Text style={styles.localCardDate}>
+                          {new Date(item.data.start_at).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                          {item.data.cost_cents === 0
+                            ? ' · Free'
+                            : ` · $${(item.data.cost_cents / 100).toFixed(0)}`}
+                        </Text>
+                      </View>
+                      {item.data.cost_cents === 0 && (
+                        <View style={styles.freePill}>
+                          <Text style={styles.freePillText}>Free</Text>
+                        </View>
+                      )}
+                      {item.data.registration_url && (
+                        <Ionicons name="chevron-forward" size={16} color="#636366" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                );
+
+              case 'theme':
+                return (
+                  <View key={item.data.id}>
+                    <LoopCard theme={item.data} />
+                  </View>
+                );
+
+              case 'business_promo':
+                return (
+                  <View key="biz-promo" style={[styles.feedItem, { alignItems: 'center', paddingVertical: 8 }]}>
+                    <TouchableOpacity
+                      onPress={() =>
+                        Linking.openURL(
+                          'https://village-eugred-1544s-projects.vercel.app/for-businesses'
+                        ).catch(() => {})
+                      }
+                    >
+                      <Text style={styles.bizLink}>
+                        Are you a local business? List your events →
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+
+              default:
+                return null;
+            }
+          })
+        )}
       </ScrollView>
     </View>
   );
@@ -293,37 +337,29 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 20,
   },
   pageTitle: {
     color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.5,
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.8,
   },
   pageSubtitle: {
     color: '#8E8E93',
     fontSize: 14,
     marginTop: 2,
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-    paddingHorizontal: 20,
-  },
-  freeBanner: {
+  feedItem: {
     marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  // Free banner
+  freeBanner: {
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(99,102,241,0.3)',
-  },
-  freeBannerInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
@@ -342,72 +378,35 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontSize: 13,
   },
-  localScroll: {
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-  localPill: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 14,
-    padding: 14,
-    width: 150,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  localPillTitle: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 6,
-    lineHeight: 18,
-  },
-  localPillDate: {
-    color: '#8E8E93',
-    fontSize: 12,
-  },
-  freePill: {
-    backgroundColor: 'rgba(52,199,89,0.15)',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    alignSelf: 'flex-start',
-    marginTop: 6,
-  },
-  freePillText: {
-    color: '#34C759',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  aiHeader: {
+  // AI cards
+  aiBadgeRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  aiLabel: {
+  aiBadge: {
     color: '#818CF8',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   aiSkeleton: {
-    height: 72,
+    height: 80,
     backgroundColor: '#1C1C1E',
-    borderRadius: 14,
+    borderRadius: 16,
   },
   aiCard: {
     backgroundColor: '#1C1C1E',
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 16,
+    padding: 16,
     flexDirection: 'row',
     gap: 12,
     alignItems: 'flex-start',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: 'rgba(99,102,241,0.2)',
   },
   aiEmoji: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 28,
+    lineHeight: 34,
   },
   aiCardHeader: {
     flexDirection: 'row',
@@ -418,8 +417,8 @@ const styles = StyleSheet.create({
   },
   aiCardTitle: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
   },
   aiCategoryPill: {
     backgroundColor: 'rgba(99,102,241,0.2)',
@@ -436,5 +435,64 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontSize: 13,
     lineHeight: 18,
+  },
+  // Section badge
+  sectionBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 8,
+  },
+  sectionBadge: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  // Local event card
+  localCard: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  localCardMain: {
+    flex: 1,
+  },
+  localCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 4,
+    lineHeight: 20,
+  },
+  localCardVenue: {
+    color: '#8E8E93',
+    fontSize: 12,
+    marginBottom: 3,
+  },
+  localCardDate: {
+    color: '#636366',
+    fontSize: 12,
+  },
+  freePill: {
+    backgroundColor: 'rgba(52,199,89,0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  freePillText: {
+    color: '#34C759',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  bizLink: {
+    color: '#636366',
+    fontSize: 13,
   },
 });

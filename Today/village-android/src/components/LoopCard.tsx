@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,23 +8,43 @@ interface Props {
   theme: ThemeWithActivities;
 }
 
+// Deterministic gradient per theme — hash theme.id into one of 8 palettes
+const GRADIENTS: [string, string][] = [
+  ['#6366F1', '#8B5CF6'], // indigo-violet
+  ['#10B981', '#059669'], // emerald
+  ['#F43F5E', '#E11D48'], // rose
+  ['#F97316', '#EA580C'], // orange
+  ['#3B82F6', '#2563EB'], // blue
+  ['#8B5CF6', '#7C3AED'], // purple
+  ['#EAB308', '#CA8A04'], // amber
+  ['#06B6D4', '#0891B2'], // cyan
+];
+
+function themeGradient(id: string): [string, string] {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) & 0xffffff;
+  }
+  return GRADIENTS[hash % GRADIENTS.length];
+}
+
 const CATEGORY_ICONS: Record<ThemeActivity['category'], React.ComponentProps<typeof Ionicons>['name']> = {
   watch: 'play-circle-outline',
   visit: 'map-outline',
-  buy: 'bag-outline',
-  make: 'construct-outline',
+  buy:   'bag-outline',
+  make:  'construct-outline',
 };
 
 const CATEGORY_LABELS: Record<ThemeActivity['category'], string> = {
   watch: 'Watch',
   visit: 'Visit',
-  buy: 'Buy',
-  make: 'Make',
+  buy:   'Buy',
+  make:  'Make',
 };
 
 function ActivityRow({ activity }: { activity: ThemeActivity }) {
-  const icon = CATEGORY_ICONS[activity.category];
-  const label = CATEGORY_LABELS[activity.category];
+  const icon  = CATEGORY_ICONS[activity.category] ?? 'ellipse-outline';
+  const label = CATEGORY_LABELS[activity.category] ?? activity.category;
 
   return (
     <TouchableOpacity
@@ -33,7 +54,7 @@ function ActivityRow({ activity }: { activity: ThemeActivity }) {
       activeOpacity={0.7}
     >
       <View style={styles.activityIcon}>
-        <Ionicons name={icon} size={16} color="#818CF8" />
+        <Ionicons name={icon} size={15} color="#818CF8" />
       </View>
       <View style={styles.activityContent}>
         <Text style={styles.activityLabel}>{label}</Text>
@@ -43,48 +64,55 @@ function ActivityRow({ activity }: { activity: ThemeActivity }) {
         )}
       </View>
       {activity.url && (
-        <Ionicons name="chevron-forward" size={14} color="#48484A" />
+        <Ionicons name="arrow-forward" size={13} color="#48484A" />
       )}
     </TouchableOpacity>
   );
 }
 
 export default function LoopCard({ theme }: Props) {
-  const sorted = [...theme.theme_activities].sort((a, b) => a.sort_order - b.sort_order);
+  const [saved, setSaved] = useState(false);
+  const sorted     = [...theme.theme_activities].sort((a, b) => a.sort_order - b.sort_order);
+  const [colorA, colorB] = themeGradient(theme.id);
 
   return (
     <View style={styles.wrapper}>
+      {/* Gradient header */}
       <LinearGradient
-        colors={['#6366F1', '#8B5CF6']}
-        style={styles.gradientBorder}
+        colors={[colorA, colorB]}
+        style={styles.header}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <View style={styles.card}>
-          <Text style={styles.title}>{theme.title}</Text>
-          {theme.description && (
-            <Text style={styles.description}>{theme.description}</Text>
-          )}
-
-          {theme.tags && theme.tags.length > 0 && (
-            <View style={styles.tags}>
-              {theme.tags.map((tag) => (
-                <View key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {sorted.length > 0 && (
-            <View style={styles.activities}>
-              {sorted.map((a) => (
-                <ActivityRow key={a.id} activity={a} />
-              ))}
-            </View>
-          )}
+        <View style={styles.headerTop}>
+          <Text style={styles.emoji}>{theme.emoji ?? '✨'}</Text>
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={() => setSaved((v) => !v)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons
+              name={saved ? 'heart' : 'heart-outline'}
+              size={20}
+              color={saved ? '#FF2D55' : 'rgba(255,255,255,0.7)'}
+            />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.title}>{theme.title}</Text>
+        {theme.description && (
+          <Text style={styles.headerDesc}>{theme.description}</Text>
+        )}
+        <View style={styles.countPill}>
+          <Text style={styles.countText}>{sorted.length} ideas</Text>
         </View>
       </LinearGradient>
+
+      {/* Activity list */}
+      <View style={styles.body}>
+        {sorted.map((a) => (
+          <ActivityRow key={a.id} activity={a} />
+        ))}
+      </View>
     </View>
   );
 }
@@ -93,60 +121,73 @@ const styles = StyleSheet.create({
   wrapper: {
     marginHorizontal: 16,
     marginBottom: 16,
-    borderRadius: 17,
-  },
-  gradientBorder: {
-    borderRadius: 17,
-    padding: 1,
-  },
-  card: {
+    borderRadius: 20,
+    overflow: 'hidden',
     backgroundColor: '#1C1C1E',
-    borderRadius: 16,
+  },
+  header: {
     padding: 18,
+    paddingBottom: 16,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  emoji: {
+    fontSize: 42,
+    lineHeight: 48,
+  },
+  saveBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
     marginBottom: 6,
   },
-  description: {
-    color: '#8E8E93',
+  headerDesc: {
+    color: 'rgba(255,255,255,0.8)',
     fontSize: 14,
     lineHeight: 20,
     marginBottom: 12,
   },
-  tags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 14,
+  countPill: {
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
   },
-  tag: {
-    backgroundColor: 'rgba(99,102,241,0.15)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  tagText: {
-    color: '#818CF8',
+  countText: {
+    color: 'rgba(255,255,255,0.9)',
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  activities: {
-    gap: 2,
+  body: {
+    backgroundColor: '#1C1C1E',
+    paddingHorizontal: 4,
   },
   activityRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.06)',
+    borderTopColor: 'rgba(255,255,255,0.07)',
   },
   activityIcon: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     borderRadius: 8,
     backgroundColor: 'rgba(99,102,241,0.15)',
     alignItems: 'center',
@@ -158,15 +199,16 @@ const styles = StyleSheet.create({
   activityLabel: {
     color: '#636366',
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
     marginBottom: 1,
   },
   activityTitle: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '500',
+    lineHeight: 18,
   },
   activityDesc: {
     color: '#8E8E93',

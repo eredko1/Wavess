@@ -18,7 +18,7 @@ import { supabase } from '@/lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
 
-type EmailStep = 'idle' | 'code';
+type EmailStep = 'idle' | 'code' | 'password';
 
 export default function SignInScreen() {
   const { width } = useWindowDimensions();
@@ -26,6 +26,7 @@ export default function SignInScreen() {
 
   const [googleLoading, setGoogleLoading] = useState(false);
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [emailStep, setEmailStep] = useState<EmailStep>('idle');
   const [emailLoading, setEmailLoading] = useState(false);
@@ -91,7 +92,25 @@ export default function SignInScreen() {
     });
     setEmailLoading(false);
     if (error) Alert.alert('Invalid code', 'That code didn\'t work. Check your email and try again.');
-    // On success, onAuthStateChange in _layout.tsx handles routing
+  }
+
+  async function handlePasswordSignIn() {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      return;
+    }
+    if (!password) {
+      Alert.alert('Missing password', 'Please enter your password.');
+      return;
+    }
+    setEmailLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: trimmedEmail,
+      password,
+    });
+    setEmailLoading(false);
+    if (error) Alert.alert('Sign-in failed', error.message);
   }
 
   const cardMaxWidth = isTablet ? 440 : undefined;
@@ -121,7 +140,7 @@ export default function SignInScreen() {
             </View>
 
             {/* Email */}
-            {emailStep === 'idle' ? (
+            {emailStep === 'idle' && (
               <>
                 <TextInput
                   style={styles.input}
@@ -133,16 +152,16 @@ export default function SignInScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
-                <TouchableOpacity
-                  style={[styles.emailBtn, emailLoading && styles.btnDisabled]}
-                  onPress={handleSendCode}
-                  disabled={emailLoading}
-                  activeOpacity={0.85}
-                >
+                <TouchableOpacity style={[styles.emailBtn, emailLoading && styles.btnDisabled]} onPress={handleSendCode} disabled={emailLoading} activeOpacity={0.85}>
                   {emailLoading ? <ActivityIndicator color="#818CF8" /> : <Text style={styles.emailBtnText}>Continue with email</Text>}
                 </TouchableOpacity>
+                <TouchableOpacity onPress={() => setEmailStep('password')} style={{ alignItems: 'center', marginTop: 4 }}>
+                  <Text style={styles.switchText}>Sign in with password instead</Text>
+                </TouchableOpacity>
               </>
-            ) : (
+            )}
+
+            {emailStep === 'code' && (
               <>
                 <View style={styles.sentNote}>
                   <Text style={styles.sentNoteText}>📬  Check your inbox — we sent a 6-digit code to</Text>
@@ -158,16 +177,42 @@ export default function SignInScreen() {
                   maxLength={6}
                   autoFocus
                 />
-                <TouchableOpacity
-                  style={[styles.emailBtn, emailLoading && styles.btnDisabled]}
-                  onPress={handleVerifyCode}
-                  disabled={emailLoading}
-                  activeOpacity={0.85}
-                >
+                <TouchableOpacity style={[styles.emailBtn, emailLoading && styles.btnDisabled]} onPress={handleVerifyCode} disabled={emailLoading} activeOpacity={0.85}>
                   {emailLoading ? <ActivityIndicator color="#818CF8" /> : <Text style={styles.emailBtnText}>Verify code</Text>}
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => { setEmailStep('idle'); setOtpCode(''); }} style={{ alignItems: 'center', marginTop: 4 }}>
-                  <Text style={{ color: '#636366', fontSize: 13 }}>Use a different email</Text>
+                  <Text style={styles.switchText}>Use a different email</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {emailStep === 'password' && (
+              <>
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="your@email.com"
+                  placeholderTextColor="#636366"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Password"
+                  placeholderTextColor="#636366"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity style={[styles.emailBtn, emailLoading && styles.btnDisabled]} onPress={handlePasswordSignIn} disabled={emailLoading} activeOpacity={0.85}>
+                  {emailLoading ? <ActivityIndicator color="#818CF8" /> : <Text style={styles.emailBtnText}>Sign in</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { setEmailStep('idle'); setPassword(''); }} style={{ alignItems: 'center', marginTop: 4 }}>
+                  <Text style={styles.switchText}>Use magic link instead</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -202,5 +247,6 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.5 },
   sentNote: { backgroundColor: 'rgba(99,102,241,0.08)', borderRadius: 10, padding: 12 },
   sentNoteText: { color: '#8E8E93', fontSize: 13, textAlign: 'center' },
+  switchText: { color: '#636366', fontSize: 13 },
   hint: { color: '#636366', fontSize: 13, textAlign: 'center', marginTop: 20 },
 });

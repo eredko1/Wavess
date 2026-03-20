@@ -2,6 +2,8 @@ import 'react-native-url-polyfill/auto';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import { ShareIntentProvider } from 'expo-share-intent';
 import ShareIntentHandler from '@/components/ShareIntentHandler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -90,7 +92,39 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       if (session) registerPushToken(session);
     });
 
-    return () => subscription.unsubscribe();
+    // Handle Google OAuth deep link — fires here because _layout is mounted
+    // before auth-callback.tsx, so the Linking event is always captured.
+    async function handleOAuthUrl(url: string) {
+      if (!url.startsWith('village://auth-callback')) return;
+      WebBrowser.dismissBrowser();
+      try {
+        const parsed = new URL(url);
+        const code = parsed.searchParams.get('code');
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
+          // onAuthStateChange above fires → setSession → routing to /(tabs)
+          return;
+        }
+        // Implicit flow fallback (hash fragment)
+        const hash = new URLSearchParams(parsed.hash.replace('#', ''));
+        const accessToken = hash.get('access_token');
+        const refreshToken = hash.get('refresh_token');
+        if (accessToken) {
+          await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken ?? '' });
+        }
+      } catch { /* malformed URL */ }
+    }
+
+    // Warm start: app already running when Intent fires
+    const linkSub = Linking.addEventListener('url', ({ url }) => handleOAuthUrl(url));
+
+    // Cold start: app launched by the Intent
+    Linking.getInitialURL().then(url => { if (url) handleOAuthUrl(url); });
+
+    return () => {
+      subscription.unsubscribe();
+      linkSub.remove();
+    };
   }, []);
 
   useEffect(() => {

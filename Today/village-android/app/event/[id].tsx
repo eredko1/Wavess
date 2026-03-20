@@ -319,8 +319,16 @@ export default function EventDetailScreen() {
 
   if (!event) {
     return (
-      <View style={[styles.root, styles.center]}>
-        <Text style={styles.errorText}>Event not found</Text>
+      <View style={styles.root}>
+        <View style={[styles.header, { paddingTop: insets.top }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={24} color="#6366F1" />
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.center}>
+          <Text style={styles.errorText}>Event not found</Text>
+        </View>
       </View>
     );
   }

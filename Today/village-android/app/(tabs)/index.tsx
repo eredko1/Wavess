@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import EventCard from '@/components/EventCard';
@@ -127,12 +127,22 @@ export default function TimelineScreen() {
         kids.push({ id: e.child_id, name: e.children.name });
       }
     }
+    kids.sort((a, b) => a.name.localeCompare(b.name));
     setFilterChildren(kids);
   }
 
   useEffect(() => {
     fetchData(showPast).finally(() => setLoading(false));
   }, [showPast]);
+
+  // Re-fetch silently when returning from event detail (e.g. after deletion)
+  const focusedOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedOnce.current) fetchData(showPast);
+      else focusedOnce.current = true;
+    }, [showPast])
+  );
 
   // Realtime: re-fetch when events change for this family
   useEffect(() => {
@@ -334,8 +344,8 @@ export default function TimelineScreen() {
         ListEmptyComponent={
           <EmptyState
             icon="calendar-outline"
-            title="No upcoming events"
-            subtitle="Forward a screenshot, scan a flyer, or add events manually."
+            title={showPast ? "No past events" : "No upcoming events"}
+            subtitle={showPast ? "Events from the last 30 days will appear here." : "Forward a screenshot, scan a flyer, or add events manually."}
             ctaLabel="Add Event"
             onCta={() => setAddOpen(true)}
           />

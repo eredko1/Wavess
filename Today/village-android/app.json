@@ -2,7 +2,7 @@
   "expo": {
     "name": "Village",
     "slug": "village-android",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "village",
@@ -62,13 +62,6 @@
           "icon": "./assets/icon.png",
           "color": "#6366F1",
           "sounds": []
-        }
-      ],
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Village uses the camera to scan event flyers.",
-          "microphonePermission": false
         }
       ],
       [

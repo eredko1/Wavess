@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   Clipboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -85,7 +86,7 @@ export default function SettingsScreen() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
-    setUserPhone(session.user.phone ?? session.user.email ?? session.user.id);
+    setUserPhone(session.user.phone || session.user.email || session.user.id);
     setUserId(session.user.id);
 
     const { data: user } = await supabase
@@ -151,6 +152,15 @@ export default function SettingsScreen() {
   useEffect(() => {
     fetchData().finally(() => setLoading(false));
   }, []);
+
+  // Cancel any in-progress name edit when navigating away
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setEditingName(false);
+      };
+    }, [])
+  );
 
   async function handleSaveName() {
     if (!nameValue.trim() || !familyId) return;
